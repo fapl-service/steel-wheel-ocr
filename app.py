@@ -262,6 +262,14 @@ def base64_to_image(b64_str: str) -> np.ndarray:
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     if img is None:
         raise ValueError("Could not decode image from base64")
+
+    # Downscale oversized images (> 1920px) to prevent Out-Of-Memory crashes on cloud servers
+    h, w = img.shape[:2]
+    max_dim = 1920
+    if max(h, w) > max_dim:
+        scale = max_dim / float(max(h, w))
+        img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+
     return img
 
 

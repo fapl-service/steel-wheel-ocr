@@ -241,11 +241,39 @@ function handlePhoneCameraCapture(event) {
   const file = event.target.files && event.target.files[0];
   if (!file) return;
 
+  showToast('Optimizing phone camera image...', 'info');
+
   const reader = new FileReader();
   reader.onload = function(e) {
-    const base64Data = e.target.result;
-    setOriginalImage(base64Data);
-    showToast('Photo captured with internal phone camera! Ready for OCR.', 'success');
+    const img = new Image();
+    img.onload = function() {
+      // Scale down image to max 1600px on the longest side
+      // Reduces 20MB raw phone photo down to ~300KB JPEG for fast transfer & no server crashes
+      const MAX_DIM = 1600;
+      let w = img.naturalWidth || img.width;
+      let h = img.naturalHeight || img.height;
+
+      if (w > MAX_DIM || h > MAX_DIM) {
+        if (w > h) {
+          h = Math.round((h * MAX_DIM) / w);
+          w = MAX_DIM;
+        } else {
+          w = Math.round((w * MAX_DIM) / h);
+          h = MAX_DIM;
+        }
+      }
+
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = w;
+      tempCanvas.height = h;
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCtx.drawImage(img, 0, 0, w, h);
+
+      const optimizedB64 = tempCanvas.toDataURL('image/jpeg', 0.88);
+      setOriginalImage(optimizedB64);
+      showToast(`Photo captured (${w}x${h})! Ready for OCR.`, 'success');
+    };
+    img.src = e.target.result;
   };
   reader.readAsDataURL(file);
   event.target.value = '';
@@ -358,6 +386,18 @@ async function requestStraighten() {
         confidence: parseFloat(elements.confSlider.value)
       })
     });
+
+    if (!res.ok) {
+      let errorMsg = `Server error (${res.status})`;
+      try {
+        const errJson = await res.json();
+        errorMsg = errJson.detail || errJson.error || errorMsg;
+      } catch (_) {
+        const text = await res.text();
+        if (text) errorMsg = text.substring(0, 150);
+      }
+      throw new Error(errorMsg);
+    }
 
     const data = await res.json();
     if (!data.success) throw new Error(data.detail || 'Straightening failed');
@@ -1056,12 +1096,23 @@ async function requestProcessOCR() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         image_base64: state.activeImageBase64,
-        straightened_image_base64: state.activeImageBase64,
         rois: roisPayload,
         tilt_angle: state.tiltAngle,
         confidence: parseFloat(elements.confSlider.value)
       })
     });
+
+    if (!res.ok) {
+      let errorMsg = `Server error (${res.status})`;
+      try {
+        const errJson = await res.json();
+        errorMsg = errJson.detail || errJson.error || errorMsg;
+      } catch (_) {
+        const text = await res.text();
+        if (text) errorMsg = text.substring(0, 150);
+      }
+      throw new Error(errorMsg);
+    }
 
     const data = await res.json();
     if (!data.success) throw new Error(data.detail || 'OCR Processing failed');
@@ -1343,6 +1394,36 @@ function renderResults(results, latencyMs) {
     `;
     elements.resultsContainer.appendChild(card);
   });
+
+  // Download button for annotated result image
+  const downloadDiv = document.createElement('div');
+  downloadDiv.style.marginTop = '12px';
+  downloadDiv.innerHTML = `
+    <button class="btn btn-outline" onclick="downloadInspectedImage()" style="width: 100%; justify-content: center; gap: 8px;">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+        <polyline points="7 10 12 15 17 10"></polyline>
+        <line x1="12" y1="15" x2="12" y2="3"></line>
+      </svg>
+      <span>📥 Save / Download Inspected Image</span>
+    </button>
+  `;
+  elements.resultsContainer.appendChild(downloadDiv);
+}
+
+function downloadInspectedImage() {
+  const imgSrc = state.annotatedImageBase64 || state.activeImageBase64;
+  if (!imgSrc) {
+    showToast('No inspection image available to download', 'error');
+    return;
+  }
+  const link = document.createElement('a');
+  link.href = imgSrc;
+  link.download = `Wheel_OCR_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '_')}.jpg`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  showToast('Image downloaded to phone/device!', 'success');
 }
 
 // -----------------------------------------------------------------------------
