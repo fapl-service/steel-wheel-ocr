@@ -5,3 +5,4 @@ __pycache__/
 .idea/
 Processed_Images/*
 !Processed_Images/.gitkeep
+model/cache/*

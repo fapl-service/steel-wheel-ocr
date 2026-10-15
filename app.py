@@ -1,4 +1,8 @@
 import os
+# Configure OpenVINO model caching
+os.makedirs("model/cache", exist_ok=True)
+os.environ["OV_CACHE_DIR"] = "model/cache"
+
 # Performance tuning for single-core / low-vCPU cloud containers to eliminate CPU thrashing
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
@@ -90,9 +94,28 @@ async def global_exception_handler(request: Request, exc: Exception):
         }
     )
 
-# Load YOLO model and Logo on startup
-print(f"[STARTUP] Loading YOLO model from {MODEL_PATH} ...")
-model = YOLO(MODEL_PATH)
+# Load OpenVINO / YOLO Segmentation model and warm it up on startup
+OPENVINO_DIR = "best_openvino_model"
+model = None
+
+if os.path.exists(OPENVINO_DIR):
+    try:
+        print(f"[STARTUP] Loading OpenVINO Segmentation Model from {OPENVINO_DIR} ...")
+        model = YOLO(OPENVINO_DIR, task="segment")
+        print("[STARTUP] OpenVINO model loaded! Warming up with dummy frame...")
+        dummy = np.zeros((640, 640, 3), dtype=np.uint8)
+        model(dummy, imgsz=640, verbose=False)
+        print("[STARTUP] OpenVINO Segmentation Model warmed up and ready!")
+    except Exception as e:
+        print(f"[STARTUP ERROR] Failed loading OpenVINO model: {e}. Falling back to PyTorch model.")
+        model = None
+
+if model is None:
+    print(f"[STARTUP] Loading PyTorch YOLO model from {MODEL_PATH} ...")
+    model = YOLO(MODEL_PATH)
+    dummy = np.zeros((640, 640, 3), dtype=np.uint8)
+    model(dummy, imgsz=640, verbose=False)
+    print("[STARTUP] PyTorch YOLO Model loaded & warmed up!")
 
 logo_img = None
 if os.path.exists(LOGO_PATH):
