@@ -247,9 +247,9 @@ function handlePhoneCameraCapture(event) {
   reader.onload = function(e) {
     const img = new Image();
     img.onload = function() {
-      // Scale down image to max 1600px on the longest side
-      // Reduces 20MB raw phone photo down to ~300KB JPEG for fast transfer & no server crashes
-      const MAX_DIM = 1600;
+      // Scale down image to max 1280px on the longest side
+      // Reduces raw phone photo to ~150KB JPEG for sub-second transfer & zero server lag
+      const MAX_DIM = 1280;
       let w = img.naturalWidth || img.width;
       let h = img.naturalHeight || img.height;
 
@@ -269,7 +269,7 @@ function handlePhoneCameraCapture(event) {
       const tempCtx = tempCanvas.getContext('2d');
       tempCtx.drawImage(img, 0, 0, w, h);
 
-      const optimizedB64 = tempCanvas.toDataURL('image/jpeg', 0.88);
+      const optimizedB64 = tempCanvas.toDataURL('image/jpeg', 0.85);
       setOriginalImage(optimizedB64);
       showToast(`Photo captured (${w}x${h})! Ready for OCR.`, 'success');
     };

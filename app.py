@@ -1,8 +1,16 @@
+import os
+# Performance tuning for single-core / low-vCPU cloud containers to eliminate CPU thrashing
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+
 import base64
 import difflib
 import io
 import json
-import os
 import time
 import re
 import traceback
@@ -10,6 +18,9 @@ from typing import Any, Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 import openpyxl
+import torch
+torch.set_num_threads(1)
+
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
@@ -263,9 +274,9 @@ def base64_to_image(b64_str: str) -> np.ndarray:
     if img is None:
         raise ValueError("Could not decode image from base64")
 
-    # Downscale oversized images (> 1920px) to prevent Out-Of-Memory crashes on cloud servers
+    # Downscale oversized images (> 1280px) to prevent Out-Of-Memory & slow inference on cloud
     h, w = img.shape[:2]
-    max_dim = 1920
+    max_dim = 1280
     if max(h, w) > max_dim:
         scale = max_dim / float(max(h, w))
         img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
@@ -340,8 +351,8 @@ def api_straighten(req: StraightenRequest):
     conf = req.confidence or DEFAULT_CONFIDENCE
     start_time = time.perf_counter()
 
-    # Pass 1 Inference
-    res1 = model(frame, conf=conf, verbose=False)[0]
+    # Pass 1 Inference with fixed imgsz=640 for fast CPU processing
+    res1 = model(frame, imgsz=640, conf=conf, verbose=False)[0]
 
     straight_frame = frame.copy()
     tilt_angle = 0.0
@@ -409,8 +420,8 @@ def api_process_ocr(req: ProcessOCRRequest):
     conf = req.confidence or DEFAULT_CONFIDENCE
     start_time = time.perf_counter()
 
-    # Pass 2 Inference on Straightened Image
-    res2 = model(straight_frame, conf=conf, verbose=False)[0]
+    # Pass 2 Inference on Straightened Image with fixed imgsz=640 for fast CPU processing
+    res2 = model(straight_frame, imgsz=640, conf=conf, verbose=False)[0]
     inference_time = (time.perf_counter() - start_time) * 1000
 
     annotated = straight_frame.copy()
