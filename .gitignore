@@ -6,3 +6,4 @@ __pycache__/
 Processed_Images/*
 !Processed_Images/.gitkeep
 model/cache/*
+best.pt

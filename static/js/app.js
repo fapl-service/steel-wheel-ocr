@@ -7,11 +7,8 @@
 // Application State
 const state = {
   originalImageBase64: null,
-  straightenedImageBase64: null,
   activeImageBase64: null,
-  currentMode: 'original', // 'original' or 'straightened'
   annotatedImageBase64: null,
-  tiltAngle: 0.0,
   naturalWidth: 0,
   naturalHeight: 0,
   rois: [],           // Array of { x1, y1, x2, y2 }
@@ -42,18 +39,9 @@ const elements = {
   webcamVideo: document.getElementById('webcam-video'),
   startCamBtn: document.getElementById('start-cam-btn'),
   captureBtn: document.getElementById('capture-btn'),
-  btnStraighten: document.getElementById('btn-straighten'),
   btnRunOCR: document.getElementById('btn-run-ocr'),
   btnClearROIs: document.getElementById('btn-clear-rois'),
   btnAutoDetect: document.getElementById('btn-auto-detect'),
-  tiltDisplay: document.getElementById('tilt-display'),
-  tiltValue: document.getElementById('tilt-value'),
-  modeToggleGroup: document.getElementById('mode-toggle-group'),
-  btnModeOriginal: document.getElementById('btn-mode-original'),
-  btnModeStraight: document.getElementById('btn-mode-straight'),
-  modeIndicatorBadge: document.getElementById('mode-indicator-badge'),
-  directGuideBanner: document.getElementById('direct-guide-banner'),
-  pass1InfoPill: document.getElementById('pass1-info-pill'),
   canvas: document.getElementById('roi-canvas'),
   canvasContainer: document.getElementById('canvas-container'),
   canvasPlaceholder: document.getElementById('canvas-placeholder'),
@@ -281,10 +269,7 @@ function handlePhoneCameraCapture(event) {
 
 function setOriginalImage(base64Str) {
   state.originalImageBase64 = base64Str;
-  state.straightenedImageBase64 = null;
   state.activeImageBase64 = base64Str;
-  state.currentMode = 'original';
-  state.tiltAngle = 0.0;
   state.annotatedImageBase64 = null;
   state.rois = [];
   state.lastOcrResults = null;
@@ -293,22 +278,10 @@ function setOriginalImage(base64Str) {
   // Hide judgment banner
   if (elements.judgmentBanner) elements.judgmentBanner.style.display = 'none';
 
-  // Enable immediate actions for direct ROI selection & OCR on raw snapshot
-  elements.btnStraighten.disabled = false;
+  // Enable immediate actions for direct ROI selection & OCR on snapshot
   elements.btnRunOCR.disabled = false;
   elements.btnClearROIs.disabled = false;
   elements.btnAutoDetect.disabled = false;
-
-  if (elements.modeToggleGroup) elements.modeToggleGroup.style.display = 'none';
-  if (elements.tiltDisplay) elements.tiltDisplay.style.display = 'none';
-  if (elements.directGuideBanner) elements.directGuideBanner.style.display = 'flex';
-  if (elements.pass1InfoPill) elements.pass1InfoPill.style.display = 'flex';
-
-  if (elements.modeIndicatorBadge) {
-    elements.modeIndicatorBadge.style.display = 'inline-flex';
-    elements.modeIndicatorBadge.className = 'mode-badge';
-    elements.modeIndicatorBadge.textContent = 'Original Snapshot (Raw)';
-  }
 
   // Load snapshot immediately into canvas for direct ROI selection
   loadWorkingImage(base64Str);
@@ -328,127 +301,6 @@ function loadWorkingImage(base64Str) {
     elements.canvas.style.display = 'block';
   };
   loadedActiveImage.src = base64Str;
-}
-
-function switchImageMode(mode) {
-  if (mode === 'straightened') {
-    if (!state.straightenedImageBase64) {
-      showToast('Image is not straightened yet. Click "Straighten Image (Pass 1 - Optional)"', 'info');
-      return;
-    }
-    state.currentMode = 'straightened';
-    state.activeImageBase64 = state.straightenedImageBase64;
-    if (elements.btnModeStraight) elements.btnModeStraight.classList.add('active');
-    if (elements.btnModeOriginal) elements.btnModeOriginal.classList.remove('active');
-    if (elements.directGuideBanner) elements.directGuideBanner.style.display = 'none';
-    if (elements.pass1InfoPill) elements.pass1InfoPill.style.display = 'none';
-
-    if (elements.modeIndicatorBadge) {
-      elements.modeIndicatorBadge.className = 'mode-badge is-straightened';
-      elements.modeIndicatorBadge.textContent = 'Straightened View';
-    }
-    if (elements.tiltDisplay) elements.tiltDisplay.style.display = 'inline-flex';
-  } else {
-    state.currentMode = 'original';
-    state.activeImageBase64 = state.originalImageBase64;
-    if (elements.btnModeOriginal) elements.btnModeOriginal.classList.add('active');
-    if (elements.btnModeStraight) elements.btnModeStraight.classList.remove('active');
-    if (elements.directGuideBanner) elements.directGuideBanner.style.display = 'flex';
-    if (elements.pass1InfoPill) elements.pass1InfoPill.style.display = 'flex';
-
-    if (elements.modeIndicatorBadge) {
-      elements.modeIndicatorBadge.className = 'mode-badge';
-      elements.modeIndicatorBadge.textContent = 'Original Snapshot (Raw)';
-    }
-    if (elements.tiltDisplay) elements.tiltDisplay.style.display = 'none';
-  }
-  loadWorkingImage(state.activeImageBase64);
-  showToast(`Switched to ${state.currentMode === 'straightened' ? 'Straightened' : 'Original Snapshot'} view`);
-}
-
-// -----------------------------------------------------------------------------
-// Image Straightening & Deskewing (Optional)
-// -----------------------------------------------------------------------------
-async function requestStraighten() {
-  if (!state.originalImageBase64) {
-    showToast('Capture a frame from the live webcam first', 'error');
-    return;
-  }
-
-  setButtonLoading(elements.btnStraighten, true, 'Straightening...');
-
-  try {
-    const res = await fetch('/api/straighten', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        image_base64: state.originalImageBase64,
-        confidence: parseFloat(elements.confSlider.value)
-      })
-    });
-
-    if (!res.ok) {
-      let errorMsg = `Server error (${res.status})`;
-      try {
-        const errJson = await res.json();
-        errorMsg = errJson.detail || errJson.error || errorMsg;
-      } catch (_) {
-        const text = await res.text();
-        if (text) errorMsg = text.substring(0, 150);
-      }
-      throw new Error(errorMsg);
-    }
-
-    const data = await res.json();
-    if (!data.success) throw new Error(data.detail || 'Straightening failed');
-
-    state.straightenedImageBase64 = data.straightened_image;
-    state.activeImageBase64 = data.straightened_image;
-    state.currentMode = 'straightened';
-    state.tiltAngle = data.tilt_angle;
-
-    // Display Tilt Badge
-    if (elements.tiltDisplay) {
-      elements.tiltDisplay.style.display = 'inline-flex';
-      elements.tiltValue.textContent = `${data.tilt_angle >= 0 ? '+' : ''}${data.tilt_angle.toFixed(2)}°`;
-    }
-
-    // Show mode switcher toggle
-    if (elements.modeToggleGroup) {
-      elements.modeToggleGroup.style.display = 'inline-flex';
-      if (elements.btnModeStraight) elements.btnModeStraight.classList.add('active');
-      if (elements.btnModeOriginal) elements.btnModeOriginal.classList.remove('active');
-    }
-    if (elements.directGuideBanner) elements.directGuideBanner.style.display = 'none';
-    if (elements.pass1InfoPill) elements.pass1InfoPill.style.display = 'none';
-
-    if (elements.modeIndicatorBadge) {
-      elements.modeIndicatorBadge.style.display = 'inline-flex';
-      elements.modeIndicatorBadge.className = 'mode-badge is-straightened';
-      elements.modeIndicatorBadge.textContent = 'Straightened View';
-    }
-
-    // Load straightened image to canvas
-    loadWorkingImage(state.straightenedImageBase64);
-
-    // Reset ROIs if any existed on raw image because alignment has changed
-    if (state.rois.length > 0) {
-      state.rois = [];
-      updateROILegend();
-      showToast(`Straightened (${data.tilt_angle >= 0 ? '+' : ''}${data.tilt_angle.toFixed(2)}°)! ROIs reset for new alignment.`);
-    } else {
-      showToast(`Straightened! Tilt: ${data.tilt_angle >= 0 ? '+' : ''}${data.tilt_angle.toFixed(2)}° (${data.latency_ms} ms)`);
-    }
-  } catch (err) {
-    showToast(`Error: ${err.message}`, 'error');
-  } finally {
-    setButtonLoading(elements.btnStraighten, false, `
-      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-        <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
-      </svg>
-      Straighten Image (Pass 1 - Optional)
-    `);
-  }
 }
 
 // -----------------------------------------------------------------------------
@@ -1097,7 +949,6 @@ async function requestProcessOCR() {
       body: JSON.stringify({
         image_base64: state.activeImageBase64,
         rois: roisPayload,
-        tilt_angle: state.tiltAngle,
         confidence: parseFloat(elements.confSlider.value)
       })
     });

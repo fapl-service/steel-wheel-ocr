@@ -35,7 +35,7 @@ from ultralytics import YOLO
 # -----------------------------
 # Configuration
 # -----------------------------
-MODEL_PATH = "best.pt"
+MODEL_DIR = "best_openvino_model"
 LOGO_PATH = "logo.png"
 PROCESSED_DIR = "Processed_Images"
 TEMPLATES_FILE = "templates.json"
@@ -49,7 +49,6 @@ CLASS_MAPPING = {
 DEFAULT_CONFIDENCE = 0.1
 CHAR_IOU_THRESH = 0.15
 BOX_IOU_THRESH = 0.10
-EXPAND_CANVAS = False
 
 # Ensure output directories exist
 os.makedirs(PROCESSED_DIR, exist_ok=True)
@@ -94,28 +93,16 @@ async def global_exception_handler(request: Request, exc: Exception):
         }
     )
 
-# Load OpenVINO / YOLO Segmentation model and warm it up on startup
-OPENVINO_DIR = "best_openvino_model"
-model = None
+# Load OpenVINO Segmentation Model exclusively
+if not os.path.exists(MODEL_DIR):
+    raise RuntimeError(f"OpenVINO model directory '{MODEL_DIR}' not found!")
 
-if os.path.exists(OPENVINO_DIR):
-    try:
-        print(f"[STARTUP] Loading OpenVINO Segmentation Model from {OPENVINO_DIR} ...")
-        model = YOLO(OPENVINO_DIR, task="segment")
-        print("[STARTUP] OpenVINO model loaded! Warming up with dummy frame...")
-        dummy = np.zeros((640, 640, 3), dtype=np.uint8)
-        model(dummy, imgsz=640, verbose=False)
-        print("[STARTUP] OpenVINO Segmentation Model warmed up and ready!")
-    except Exception as e:
-        print(f"[STARTUP ERROR] Failed loading OpenVINO model: {e}. Falling back to PyTorch model.")
-        model = None
-
-if model is None:
-    print(f"[STARTUP] Loading PyTorch YOLO model from {MODEL_PATH} ...")
-    model = YOLO(MODEL_PATH)
-    dummy = np.zeros((640, 640, 3), dtype=np.uint8)
-    model(dummy, imgsz=640, verbose=False)
-    print("[STARTUP] PyTorch YOLO Model loaded & warmed up!")
+print(f"[STARTUP] Loading OpenVINO Segmentation Model from {MODEL_DIR} ...")
+model = YOLO(MODEL_DIR, task="segment")
+print("[STARTUP] Warming up OpenVINO model with dummy frame...")
+dummy = np.zeros((640, 640, 3), dtype=np.uint8)
+model(dummy, imgsz=640, verbose=False)
+print("[STARTUP] OpenVINO Segmentation Model warmed up and ready!")
 
 logo_img = None
 if os.path.exists(LOGO_PATH):
@@ -126,51 +113,8 @@ else:
 
 
 # ==============================================================================
-# Helper Algorithms (Geometry, Deskewing & OCR Processing)
+# Helper Algorithms (Geometry & OCR Processing)
 # ==============================================================================
-
-def order_points_clockwise(pts: np.ndarray) -> np.ndarray:
-    """Arranges 4 box corner points in clockwise order: [TL, TR, BR, BL]"""
-    pts = np.array(pts, dtype=np.float32)
-    x_sorted = pts[np.argsort(pts[:, 0]), :]
-    left_most = x_sorted[:2, :]
-    right_most = x_sorted[2:, :]
-
-    left_most = left_most[np.argsort(left_most[:, 1]), :]
-    tl, bl = left_most[0], left_most[1]
-
-    right_most = right_most[np.argsort(right_most[:, 1]), :]
-    tr, br = right_most[0], right_most[1]
-
-    return np.array([tl, tr, br, bl], dtype=np.float32)
-
-
-def straighten_full_image(image: np.ndarray, pts: np.ndarray, expand: bool = False) -> Tuple[np.ndarray, float]:
-    """Rotates/deskews the entire image based on the tilt angle of the 4 corner points."""
-    rect = order_points_clockwise(pts)
-    tl, tr, br, bl = rect
-
-    dx = tr[0] - tl[0]
-    dy = tr[1] - tl[1]
-    angle = float(np.degrees(np.arctan2(dy, dx)))
-
-    (h, w) = image.shape[:2]
-    center = (w / 2.0, h / 2.0)
-
-    M = cv2.getRotationMatrix2D(center, angle, 1.0)
-
-    if expand:
-        cos = np.abs(M[0, 0])
-        sin = np.abs(M[0, 1])
-        new_w = int((h * sin) + (w * cos))
-        new_h = int((h * cos) + (w * sin))
-        M[0, 2] += (new_w / 2.0) - center[0]
-        M[1, 2] += (new_h / 2.0) - center[1]
-        rotated = cv2.warpAffine(image, M, (new_w, new_h), flags=cv2.INTER_LINEAR)
-    else:
-        rotated = cv2.warpAffine(image, M, (w, h), flags=cv2.INTER_LINEAR)
-
-    return rotated, angle
 
 
 def calculate_iou(box1, box2):
@@ -338,16 +282,9 @@ def find_template_by_id(template_id: str) -> Optional[Dict]:
 # Pydantic Request Models
 # ==============================================================================
 
-class StraightenRequest(BaseModel):
-    image_base64: str
-    confidence: Optional[float] = DEFAULT_CONFIDENCE
-
-
 class ProcessOCRRequest(BaseModel):
-    straightened_image_base64: Optional[str] = None
-    image_base64: Optional[str] = None
+    image_base64: str
     rois: Optional[List[List[int]]] = []  # List of [x1, y1, x2, y2]
-    tilt_angle: Optional[float] = 0.0
     confidence: Optional[float] = DEFAULT_CONFIDENCE
 
 
@@ -360,102 +297,36 @@ class ValidateOCRRequest(BaseModel):
 # API Endpoints
 # ==============================================================================
 
-
-@app.post("/api/straighten")
-def api_straighten(req: StraightenRequest):
-    """
-    Pass 1: Detects 'box' on the input image, calculates tilt angle, and returns straightened full image.
-    """
-    try:
-        frame = base64_to_image(req.image_base64)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid image: {str(e)}")
-
-    conf = req.confidence or DEFAULT_CONFIDENCE
-    start_time = time.perf_counter()
-
-    # Pass 1 Inference with fixed imgsz=640 for fast CPU processing
-    res1 = model(frame, imgsz=640, conf=conf, verbose=False)[0]
-
-    straight_frame = frame.copy()
-    tilt_angle = 0.0
-    box_detected = False
-
-    # Extract 4 corners from segmentation mask if present
-    if res1.masks is not None and len(res1.masks) > 0:
-        masks_xy = res1.masks.xy
-        classes = res1.boxes.cls.cpu().numpy().astype(int)
-        confidences = res1.boxes.conf.cpu().numpy()
-
-        best_box_pts = None
-        max_conf = -1.0
-
-        for poly, cls_id, c_conf in zip(masks_xy, classes, confidences):
-            cname = res1.names.get(cls_id, str(cls_id))
-            if cname == "box" and len(poly) >= 3 and c_conf > max_conf:
-                rect = cv2.minAreaRect(poly.astype(np.float32))
-                best_box_pts = cv2.boxPoints(rect)
-                max_conf = c_conf
-
-        if best_box_pts is not None:
-            straight_frame, tilt_angle = straighten_full_image(frame, best_box_pts, expand=EXPAND_CANVAS)
-            box_detected = True
-
-    elif res1.boxes is not None and len(res1.boxes) > 0:
-        # Fallback to standard bounding box
-        for b in res1.boxes:
-            cls_id = int(b.cls[0].item())
-            if res1.names[cls_id] == "box":
-                bx1, by1, bx2, by2 = b.xyxy[0].tolist()
-                box_pts = np.array([[bx1, by1], [bx2, by1], [bx2, by2], [bx1, by2]], dtype=np.float32)
-                straight_frame, tilt_angle = straighten_full_image(frame, box_pts, expand=EXPAND_CANVAS)
-                box_detected = True
-                break
-
-    latency_ms = (time.perf_counter() - start_time) * 1000
-    h, w = straight_frame.shape[:2]
-
-    return {
-        "success": True,
-        "box_detected": box_detected,
-        "tilt_angle": round(tilt_angle, 2),
-        "width": w,
-        "height": h,
-        "latency_ms": round(latency_ms, 1),
-        "straightened_image": image_to_base64(straight_frame, ".jpg"),
-    }
-
-
 @app.post("/api/process_ocr")
 def api_process_ocr(req: ProcessOCRRequest):
     """
-    Pass 2: Detects characters on the straightened image, filters by selected ROIs,
+    Direct OpenVINO OCR: Detects characters on the image, filters by selected ROIs,
     sorts coordinates, replaces slash and IST with logo.png, and overlays visual results.
     """
-    img_b64 = req.image_base64 or req.straightened_image_base64
+    img_b64 = req.image_base64
     if not img_b64:
         raise HTTPException(status_code=400, detail="No image provided for OCR processing")
     try:
-        straight_frame = base64_to_image(img_b64)
+        frame = base64_to_image(img_b64)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid image: {str(e)}")
 
     conf = req.confidence or DEFAULT_CONFIDENCE
     start_time = time.perf_counter()
 
-    # Pass 2 Inference on Straightened Image with fixed imgsz=640 for fast CPU processing
-    res2 = model(straight_frame, imgsz=640, conf=conf, verbose=False)[0]
+    # Direct OpenVINO Inference on input image with fixed imgsz=640 for fast CPU processing
+    res = model(frame, imgsz=640, conf=conf, verbose=False)[0]
     inference_time = (time.perf_counter() - start_time) * 1000
 
-    annotated = straight_frame.copy()
+    annotated = frame.copy()
 
     all_detected_boxes = []
     all_detected_chars = []
 
-    if res2.boxes is not None and len(res2.boxes) > 0:
-        for b in res2.boxes:
+    if res.boxes is not None and len(res.boxes) > 0:
+        for b in res.boxes:
             cls_id = int(b.cls[0].item())
-            cls_name = str(res2.names[cls_id])
+            cls_name = str(res.names[cls_id])
             box_conf = float(b.conf[0].item())
             xyxy = [int(v) for v in b.xyxy[0].tolist()]
 
@@ -590,7 +461,7 @@ def api_process_ocr(req: ProcessOCRRequest):
             final_text = "".join(c["char"] for c in all_chars)
             ocr_results.append({
                 "roi_idx": 1,
-                "bbox": [0, 0, straight_frame.shape[1], straight_frame.shape[0]],
+                "bbox": [0, 0, frame.shape[1], frame.shape[0]],
                 "text": final_text,
                 "has_logo": any(c["cls_name"] == "IST" for c in all_chars),
                 "char_count": len(all_chars),
