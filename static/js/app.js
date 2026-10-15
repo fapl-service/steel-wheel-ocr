@@ -220,9 +220,9 @@ function captureWebcamFrame() {
   const tempCtx = tempCanvas.getContext('2d');
   tempCtx.drawImage(video, 0, 0, vw, vh);
 
-  const snapshotB64 = tempCanvas.toDataURL('image/jpeg', 0.95);
+  const snapshotB64 = tempCanvas.toDataURL('image/jpeg', 0.85);
   setOriginalImage(snapshotB64);
-  showToast('Snapshot captured! Select ROI directly, or optionally straighten.');
+  showToast('Snapshot captured! Ready for OCR verification.');
 }
 
 function handlePhoneCameraCapture(event) {
@@ -924,7 +924,37 @@ function onWheelModelSelected() {
 }
 
 // -----------------------------------------------------------------------------
-// Pass 2: Process OCR Verification (Direct or Straightened)
+// Safe JSON & Network Response Parser
+// -----------------------------------------------------------------------------
+async function parseJsonResponse(res) {
+  // Read body stream EXACTLY ONCE as text to prevent "body stream already read" TypeError
+  const rawText = await res.text();
+  let data = null;
+  try {
+    data = JSON.parse(rawText);
+  } catch (_) {
+    // Non-JSON response (e.g. Render HTML 502/504 gateway error or 500 server crash)
+  }
+
+  if (!res.ok) {
+    let cleanText = rawText ? rawText.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').trim().substring(0, 160) : '';
+    let errorMsg = (data && (data.detail || data.error)) || cleanText || `Server error (${res.status})`;
+    if (res.status === 502 || res.status === 504) {
+      errorMsg = `Server is warming up (${res.status}). Please wait 10 seconds and tap Run OCR again.`;
+    }
+    throw new Error(errorMsg);
+  }
+
+  if (!data) {
+    let cleanText = rawText ? rawText.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').trim().substring(0, 120) : 'Empty response';
+    throw new Error(`Invalid response from server: ${cleanText}`);
+  }
+
+  return data;
+}
+
+// -----------------------------------------------------------------------------
+// OpenVINO OCR Verification
 // -----------------------------------------------------------------------------
 async function requestProcessOCR() {
   if (!state.activeImageBase64) {
@@ -953,20 +983,8 @@ async function requestProcessOCR() {
       })
     });
 
-    if (!res.ok) {
-      let errorMsg = `Server error (${res.status})`;
-      try {
-        const errJson = await res.json();
-        errorMsg = errJson.detail || errJson.error || errorMsg;
-      } catch (_) {
-        const text = await res.text();
-        if (text) errorMsg = text.substring(0, 150);
-      }
-      throw new Error(errorMsg);
-    }
-
-    const data = await res.json();
-    if (!data.success) throw new Error(data.detail || 'OCR Processing failed');
+    const data = await parseJsonResponse(res);
+    if (!data.success) throw new Error(data.detail || data.error || 'OCR Processing failed');
 
     state.annotatedImageBase64 = data.annotated_image;
     state.lastOcrResults = data.results;
@@ -1055,9 +1073,9 @@ async function validateOcrAgainstTemplate(results) {
           ocr_texts: ocrTexts
         })
       });
-      frontData = await frontRes.json();
-      if (!frontRes.ok || !frontData.success) {
-        const err = frontData.detail || frontData.error || `Server status ${frontRes.status}`;
+      frontData = await parseJsonResponse(frontRes);
+      if (!frontData.success) {
+        const err = frontData.detail || frontData.error || 'Front validation failed';
         console.error('[VALIDATE FRONT ERROR]', frontData);
         showToast(`Front OCR Error: ${err}`, 'error');
         return;
@@ -1076,9 +1094,9 @@ async function validateOcrAgainstTemplate(results) {
           ocr_texts: ocrTexts
         })
       });
-      rearData = await rearRes.json();
-      if (!rearRes.ok || !rearData.success) {
-        const err = rearData.detail || rearData.error || `Server status ${rearRes.status}`;
+      rearData = await parseJsonResponse(rearRes);
+      if (!rearData.success) {
+        const err = rearData.detail || rearData.error || 'Rear validation failed';
         console.error('[VALIDATE REAR ERROR]', rearData);
         showToast(`Rear OCR Error: ${err}`, 'error');
       }

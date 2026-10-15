@@ -58,8 +58,8 @@ os.makedirs(PROCESSED_DIR, exist_ok=True)
 # -----------------------------
 app = FastAPI(
     title="Steel Wheel OCR Verification System",
-    description="Full Web GUI for automated wheel straightening, interactive multi-ROI selection, and OCR verification.",
-    version="2.0.0",
+    description="Full Web GUI for OpenVINO interactive multi-ROI selection and OCR verification.",
+    version="3.0.0",
 )
 
 app.add_middleware(
