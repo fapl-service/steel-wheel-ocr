@@ -1,7 +1,7 @@
 description: Ultralytics YOLO26s-seg model trained on data.yaml
 author: Ultralytics
-date: '2026-10-15T12:46:25.130963'
-version: 8.4.83
+date: '2026-10-15T17:39:31.433050'
+version: 8.4.56
 license: AGPL-3.0 License (https://ultralytics.com/license)
 docs: https://docs.ultralytics.com
 stride: 32
@@ -42,7 +42,8 @@ args:
   data: null
   batch: 1
   fraction: 1.0
-  quantize: null
+  half: false
+  int8: false
   dynamic: false
   nms: false
 channels: 3
