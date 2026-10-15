@@ -13,6 +13,7 @@ const state = {
   naturalHeight: 0,
   rois: [],           // Array of { x1, y1, x2, y2 }
   selectedROIIndex: null, // Currently selected ROI for editing
+  drawMode: false,        // Explicit drawing mode (prevents accidental touch-scroll ROIs)
   activeInteraction: null, // 'draw' | 'move' | 'resize'
   activeHandle: null,      // Handle currently being dragged
   dragStart: null,
@@ -39,6 +40,9 @@ const elements = {
   webcamVideo: document.getElementById('webcam-video'),
   startCamBtn: document.getElementById('start-cam-btn'),
   captureBtn: document.getElementById('capture-btn'),
+  btnToggleDraw: document.getElementById('btn-toggle-draw'),
+  btnToggleDrawText: document.getElementById('btn-toggle-draw-text'),
+  btnRotateCW: document.getElementById('btn-rotate-cw'),
   btnRunOCR: document.getElementById('btn-run-ocr'),
   btnClearROIs: document.getElementById('btn-clear-rois'),
   btnAutoDetect: document.getElementById('btn-auto-detect'),
@@ -64,7 +68,7 @@ let loadedActiveImage = new Image();
 // -----------------------------------------------------------------------------
 window.addEventListener('DOMContentLoaded', () => {
   setupEventListeners();
-  initWebcamAuto();
+  // Default camera remains OFF on page load per user request
   loadTemplatesForDropdown();
   updatePendingApprovalsCount();
 });
@@ -84,16 +88,26 @@ function setupEventListeners() {
     window.addEventListener('mousemove', onCanvasMouseMove);
     window.addEventListener('mouseup', onCanvasMouseUp);
 
-    // Touch Support
+    // Touch Support - Safe from accidental touches while scrolling
     elements.canvas.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      onCanvasMouseDown(e.touches[0]);
+      const touch = e.touches[0];
+      const isInteractionStarted = onCanvasMouseDown(touch, true);
+      if (isInteractionStarted) {
+        if (e.cancelable) e.preventDefault();
+      }
     }, { passive: false });
+
     window.addEventListener('touchmove', (e) => {
-      if (state.activeInteraction) onCanvasMouseMove(e.touches[0]);
+      if (state.activeInteraction) {
+        if (e.cancelable) e.preventDefault();
+        onCanvasMouseMove(e.touches[0]);
+      }
     }, { passive: false });
+
     window.addEventListener('touchend', (e) => {
-      if (state.activeInteraction) onCanvasMouseUp(e.changedTouches[0]);
+      if (state.activeInteraction) {
+        onCanvasMouseUp(e.changedTouches[0]);
+      }
     }, { passive: false });
   }
 
@@ -282,6 +296,8 @@ function setOriginalImage(base64Str) {
   elements.btnRunOCR.disabled = false;
   elements.btnClearROIs.disabled = false;
   elements.btnAutoDetect.disabled = false;
+  if (elements.btnToggleDraw) elements.btnToggleDraw.disabled = false;
+  if (elements.btnRotateCW) elements.btnRotateCW.disabled = false;
 
   // Load snapshot immediately into canvas for direct ROI selection
   loadWorkingImage(base64Str);
@@ -301,6 +317,55 @@ function loadWorkingImage(base64Str) {
     elements.canvas.style.display = 'block';
   };
   loadedActiveImage.src = base64Str;
+}
+
+function rotateWorkingImage(degrees = 90) {
+  if (!state.activeImageBase64) {
+    showToast('Please capture an image first', 'error');
+    return;
+  }
+
+  showToast('Rotating image 90°...', 'info');
+
+  const img = new Image();
+  img.onload = () => {
+    const w = img.naturalWidth || img.width;
+    const h = img.naturalHeight || img.height;
+
+    const rotCanvas = document.createElement('canvas');
+    const rotCtx = rotCanvas.getContext('2d');
+
+    // For 90 or 270 degree rotation, swap width and height
+    if (Math.abs(degrees) === 90 || Math.abs(degrees) === 270) {
+      rotCanvas.width = h;
+      rotCanvas.height = w;
+    } else {
+      rotCanvas.width = w;
+      rotCanvas.height = h;
+    }
+
+    // Translate to center, rotate, and draw
+    rotCtx.translate(rotCanvas.width / 2, rotCanvas.height / 2);
+    rotCtx.rotate((degrees * Math.PI) / 180);
+    rotCtx.drawImage(img, -w / 2, -h / 2);
+
+    const rotatedB64 = rotCanvas.toDataURL('image/jpeg', 0.88);
+
+    // Update active and original image state
+    state.activeImageBase64 = rotatedB64;
+    state.originalImageBase64 = rotatedB64;
+    state.annotatedImageBase64 = null;
+    state.rois = [];
+    state.selectedROIIndex = null;
+    state.lastOcrResults = null;
+    toggleDrawMode(false);
+    updateROILegend();
+
+    // Reload rotated image into canvas viewport
+    loadWorkingImage(rotatedB64);
+    showToast(`Image rotated ${degrees}° clockwise! Ready for ROI selection.`, 'success');
+  };
+  img.src = state.activeImageBase64;
 }
 
 // -----------------------------------------------------------------------------
@@ -491,11 +556,43 @@ function onCanvasHoverMove(e) {
     }
   }
 
-  elements.canvas.style.cursor = 'crosshair';
+  elements.canvas.style.cursor = state.drawMode ? 'crosshair' : 'default';
 }
 
-function onCanvasMouseDown(e) {
+function toggleDrawMode(forceState) {
   if (!state.activeImageBase64) return;
+  state.drawMode = typeof forceState === 'boolean' ? forceState : !state.drawMode;
+  const btn = elements.btnToggleDraw;
+  const txt = elements.btnToggleDrawText;
+
+  if (state.drawMode) {
+    if (btn) {
+      btn.classList.add('active');
+      btn.classList.add('btn-primary');
+      btn.classList.remove('btn-outline');
+    }
+    if (txt) txt.textContent = '✏️ Drawing ON (Tap to Cancel)';
+    if (elements.canvas) {
+      elements.canvas.classList.add('drawing-active');
+      elements.canvas.style.cursor = 'crosshair';
+    }
+    showToast('Drawing Mode ON: Drag over markings on the image.', 'info');
+  } else {
+    if (btn) {
+      btn.classList.remove('active');
+      btn.classList.remove('btn-primary');
+      btn.classList.add('btn-outline');
+    }
+    if (txt) txt.textContent = '✏️ Draw ROI';
+    if (elements.canvas) {
+      elements.canvas.classList.remove('drawing-active');
+      elements.canvas.style.cursor = 'default';
+    }
+  }
+}
+
+function onCanvasMouseDown(e, isTouch = false) {
+  if (!state.activeImageBase64) return false;
   const pos = getCanvasCoordinates(e);
 
   // 1. If an ROI is selected, check its handles or interior
@@ -512,14 +609,14 @@ function onCanvasMouseDown(e) {
       state.activeHandle = handle;
       state.dragStart = pos;
       state.origROI = { x1: rx, y1: ry, x2: rx + rw, y2: ry + rh };
-      return;
+      return true;
     }
 
     if (isPointInsideRect(pos.x, pos.y, rx, ry, rw, rh)) {
       state.activeInteraction = 'move';
       state.dragStart = pos;
       state.origROI = { x1: rx, y1: ry, x2: rx + rw, y2: ry + rh };
-      return;
+      return true;
     }
   }
 
@@ -535,14 +632,28 @@ function onCanvasMouseDown(e) {
       state.activeInteraction = 'move';
       state.dragStart = pos;
       state.origROI = { x1: rx, y1: ry, x2: rx + rw, y2: ry + rh };
-      return;
+      return true;
     }
   }
 
-  // 3. Clicked empty space: deselect current ROI and start drawing a new ROI
+  // 3. Clicked empty space:
+  // On mobile touch devices: if NOT in drawMode, allow page scrolling! Do NOT create an accidental ROI!
+  if (isTouch && !state.drawMode) {
+    deselectROI();
+    return false;
+  }
+
+  // If on desktop mouse, but drawMode is not active: only draw if drawMode is on or user clicks and drags
+  if (!isTouch && !state.drawMode && state.rois.length > 0) {
+    // If ROIs already exist on desktop, clicking empty space deselects without immediately drawing
+    deselectROI();
+    return false;
+  }
+
   deselectROI();
   state.activeInteraction = 'draw';
   state.dragStart = pos;
+  return true;
 }
 
 function onCanvasMouseMove(e) {
@@ -642,14 +753,17 @@ function onCanvasMouseUp(e) {
     const x2 = Math.max(state.dragStart.x, endPos.x);
     const y2 = Math.max(state.dragStart.y, endPos.y);
 
-    // Minimum size threshold
-    const minW = Math.max(12, Math.round(elements.canvas.width * 0.008));
-    const minH = Math.max(8, Math.round(elements.canvas.height * 0.008));
+    // Minimum size threshold to discard accidental micro-taps/finger slips (min 28x20 px)
+    const minW = Math.max(28, Math.round(elements.canvas.width * 0.015));
+    const minH = Math.max(20, Math.round(elements.canvas.height * 0.015));
 
     if (Math.abs(x2 - x1) >= minW && Math.abs(y2 - y1) >= minH) {
       state.rois.push({ x1, y1, x2, y2 });
       selectROI(state.rois.length - 1);
       showToast(`Added ROI ${state.rois.length} (Selected for editing)`);
+      if (state.drawMode) {
+        toggleDrawMode(false); // Automatically return to safe scroll mode after drawing
+      }
     } else {
       redrawCanvas();
     }
@@ -838,6 +952,7 @@ function deleteROI(index) {
 function clearAllROIs() {
   state.rois = [];
   state.selectedROIIndex = null;
+  toggleDrawMode(false);
   if (elements.roiEditBar) elements.roiEditBar.style.display = 'none';
   updateROILegend();
   redrawCanvas();
