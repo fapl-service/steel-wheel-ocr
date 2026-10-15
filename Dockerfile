@@ -7,17 +7,21 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Install system dependencies needed by OpenCV / PyTorch
+# Install system dependencies needed by OpenCV (libxcb, libGL, X11) & PyTorch
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 \
     libglib2.0-0 \
     libgomp1 \
+    libxcb1 \
+    libx11-6 \
+    libxext6 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create cache dirs and user 1000 permissions for Hugging Face Spaces
+# Create cache dirs and user 1000 permissions
 RUN useradd -m -u 1000 user && \
     mkdir -p /app/Processed_Images && \
     chown -R user:user /app
@@ -27,6 +31,6 @@ COPY --chown=user:user . /app
 
 USER user
 
-EXPOSE 7860
+EXPOSE 7860 10000
 
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7860"]
+CMD ["sh", "-c", "uvicorn app:app --host 0.0.0.0 --port ${PORT:-7860}"]
