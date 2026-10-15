@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Steel Wheel OCR Verification System | Industrial AI Studio</title>
+  <link rel="stylesheet" href="/static/css/style.css?v=3.9.1" />
+  <link rel="icon" type="image/png" href="/logo.png" />
+</head>
+
+<body>
+
+  <!-- =========================================================================
+       Header
+       ========================================================================= -->
+  <header class="app-header">
+    <div class="brand-section">
+      <div class="brand-logo-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5"
+          stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9"></circle>
+          <line x1="3.6" y1="9" x2="20.4" y2="9"></line>
+          <line x1="3.6" y1="15" x2="20.4" y2="15"></line>
+          <path d="M11.5 3a17 17 0 0 0 0 18"></path>
+          <path d="M12.5 3a17 17 0 0 1 0 18"></path>
+        </svg>
+      </div>
+      <div>
+        <h1 class="brand-title">Steel Wheel OCR Verification System</h1>
+        <div class="brand-subtitle">AI Straightening &amp; Multi-ROI Verification</div>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <nav class="main-nav">
+      <button class="nav-tab active" id="nav-ocr-studio" onclick="switchScreen('ocr-studio')">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+          <circle cx="8.5" cy="8.5" r="1.5"></circle>
+          <polyline points="21 15 16 10 5 21"></polyline>
+        </svg>
+        OCR Studio
+      </button>
+      <button class="nav-tab" id="nav-templates" onclick="switchScreen('templates')">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+          <line x1="16" y1="13" x2="8" y2="13"></line>
+          <line x1="16" y1="17" x2="8" y2="17"></line>
+          <polyline points="10 9 9 9 8 9"></polyline>
+        </svg>
+        Marking Templates
+      </button>
+      <button class="nav-tab" id="nav-approvals" onclick="switchScreen('approvals')">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+        </svg>
+        Approval Screen
+        <span class="nav-counter" id="nav-pending-badge">3</span>
+      </button>
+    </nav>
+
+    <div class="header-status-bar">
+      <div class="conf-container">
+        <span class="conf-label">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path
+              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+            </path>
+          </svg>
+          Model Confidence
+        </span>
+        <input type="range" id="conf-slider" min="0.05" max="0.50" step="0.01" value="0.10" />
+        <span id="conf-val" class="conf-badge">0.10</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- =========================================================================
+       SCREEN 1: OCR Studio (existing)
+       ========================================================================= -->
+  <div id="screen-ocr-studio" class="screen active">
+    <main class="app-container">
+
+      <!-- LEFT COLUMN: Step 1 Image Acquisition & Step 3 Output Summary -->
+      <aside style="display: flex; flex-direction: column; gap: 24px;">
+
+        <!-- Step 1 Card: Live Webcam Acquisition + Model Selector -->
+        <section class="panel-card">
+          <div class="panel-header">
+            <div class="panel-title">
+              <span class="step-number">1</span>
+              <span>Live Webcam Acquisition</span>
+            </div>
+          </div>
+
+          <!-- Wheel Model Selector -->
+          <div class="model-selector-container">
+            <label class="model-selector-label">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M12 8v4l3 3"></path>
+              </svg>
+              Select Wheel Model
+            </label>
+            <select id="wheel-model-select" class="model-select" onchange="onWheelModelSelected()">
+              <option value="">— No Template (Free OCR) —</option>
+            </select>
+            <div id="selected-template-info" class="template-info-mini" style="display: none;"></div>
+
+            <!-- Side Selection: Auto Both, Front Only, or Rear Only -->
+            <div id="inspect-side-container" class="form-group" style="margin-top: 10px; display: none;">
+              <label class="toolbar-label"
+                style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 5px; display: block;">
+                Inspect Side
+              </label>
+              <div class="mode-toggle-group" id="inspect-side-toggle" style="display: flex; width: 100%;">
+                <button type="button" class="mode-toggle-btn active" id="btn-side-auto"
+                  onclick="setInspectionSide('auto')" style="flex: 1;">Auto (Both)</button>
+                <button type="button" class="mode-toggle-btn" id="btn-side-front" onclick="setInspectionSide('front')"
+                  style="flex: 1;">Front Only</button>
+                <button type="button" class="mode-toggle-btn" id="btn-side-rear" onclick="setInspectionSide('rear')"
+                  style="flex: 1;">Rear Only</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="webcam-container">
+            <video id="webcam-video" autoplay playsinline muted></video>
+            <div class="webcam-overlay">
+              <button class="btn btn-primary" id="start-cam-btn" onclick="toggleWebcam()">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+                Start Camera
+              </button>
+              <button class="btn btn-success" id="capture-btn" onclick="captureWebcamFrame()" disabled>
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+                Capture Snapshot
+              </button>
+            </div>
+          </div>
+
+          <!-- Phone Camera Direct Shutter (Mobile Internal Camera) -->
+          <div style="margin-top: 10px; margin-bottom: 6px;">
+            <input type="file" id="phone-camera-input" accept="image/*" capture="environment" style="display: none;" onchange="handlePhoneCameraCapture(event)">
+            <button type="button" class="btn btn-primary" id="btn-phone-cam" onclick="document.getElementById('phone-camera-input').click()"
+              style="width: 100%; justify-content: center; gap: 8px; background: linear-gradient(135deg, #0284c7, #2563eb);">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                <circle cx="12" cy="13" r="4"></circle>
+              </svg>
+              <span>📱 Snap with Phone Camera</span>
+            </button>
+          </div>
+
+          <!-- Straighten Button (Optional) -->
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <button class="btn btn-outline" id="btn-straighten" onclick="requestStraighten()" disabled
+              style="width: 100%;">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+              </svg>
+              Straighten Image (Pass 1 - Optional)
+            </button>
+            <div class="pass1-info-pill" id="pass1-info-pill" style="display: none;">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              <span>If image is already straight, skip this! Draw ROIs directly on the canvas.</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Step 3 Results Overview Panel -->
+        <section class="panel-card" id="results-panel">
+          <div class="panel-header">
+            <div class="panel-title">
+              <span class="step-number">3</span>
+              <span>OCR Verification Output</span>
+            </div>
+          </div>
+
+          <!-- Judgment Banner (OK/NG) -->
+          <div id="judgment-banner" class="judgment-banner" style="display: none;"></div>
+
+          <div id="results-container" class="results-section">
+            <div style="text-align: center; color: var(--text-muted); padding: 30px 10px; font-size: 0.88rem;">
+              Select ROI(s) on the canvas or click "Auto-Detect All" to inspect OCR output.
+            </div>
+          </div>
+
+          <!-- Send for Admin Approval Button -->
+          <button class="btn btn-outline" id="btn-send-approval" onclick="sendCurrentForApproval()"
+            style="display: none; margin-top: 14px; width: 100%; justify-content: center; gap: 8px;">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="12" y1="18" x2="12" y2="12"></line>
+              <line x1="9" y1="15" x2="15" y2="15"></line>
+            </svg>
+            Send for Admin Approval
+          </button>
+        </section>
+
+      </aside>
+
+      <!-- RIGHT COLUMN: Step 2 Interactive Canvas Studio -->
+      <main class="panel-card studio-main">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span class="step-number">2</span>
+            <span>Interactive Studio &amp; Multi-ROI Canvas</span>
+          </div>
+
+          <div class="toolbar-group">
+            <!-- View Mode Switcher (Visible after straightening) -->
+            <div class="mode-toggle-group" id="mode-toggle-group" style="display: none;">
+              <button class="mode-toggle-btn active" id="btn-mode-original" onclick="switchImageMode('original')">
+                Original Snapshot
+              </button>
+              <button class="mode-toggle-btn" id="btn-mode-straight" onclick="switchImageMode('straightened')">
+                Straightened
+              </button>
+            </div>
+
+            <span class="mode-badge" id="mode-indicator-badge" style="display: none;">
+              Original Snapshot (Raw)
+            </span>
+
+            <span class="tilt-badge" id="tilt-display" style="display: none;">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                <path d="M3 3v5h5"></path>
+              </svg>
+              <span id="tilt-value">0.00°</span>
+            </span>
+          </div>
+        </div>
+
+        <!-- Studio Toolbar -->
+        <div class="studio-toolbar">
+          <div class="toolbar-group">
+            <button class="btn btn-outline" id="btn-clear-rois" onclick="clearAllROIs()" disabled>
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+              Clear ROIs
+            </button>
+            <button class="btn btn-outline" id="btn-auto-detect" onclick="runAutoOCR()" disabled
+              title="Skip manual drawing and automatically detect boxes across the image">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                <polyline points="21 15 16 10 5 21"></polyline>
+              </svg>
+              Auto-Detect All
+            </button>
+          </div>
+
+          <!-- Action Button: Run OCR -->
+          <button class="btn btn-success" id="btn-run-ocr" onclick="requestProcessOCR()" disabled>
+            <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polygon points="10 8 16 12 10 16 10 8"></polygon>
+            </svg>
+            Run OCR Verification
+          </button>
+        </div>
+
+        <!-- Selected ROIs Legend Container -->
+        <div class="roi-legend-container" id="roi-legend-container">
+          <!-- Dynamically filled with ROI chips -->
+        </div>
+
+        <!-- Edit ROI Toolbar (Appears when an ROI is selected) -->
+        <div class="roi-edit-bar" id="roi-edit-bar" style="display: none;">
+          <div class="roi-edit-left">
+            <span class="roi-edit-badge" id="roi-edit-badge">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+              </svg>
+              Editing ROI 1
+            </span>
+            <span class="roi-edit-coords" id="roi-edit-coords">X: 0, Y: 0 | W: 0, H: 0 px</span>
+            <span class="roi-edit-tip">💡 Drag handles to resize &bull; Drag inside to move</span>
+          </div>
+          <div class="roi-edit-actions">
+            <div class="roi-btn-group" title="Nudge Position">
+              <button class="btn-xs" onclick="nudgeSelectedROI(-3, 0)" title="Nudge Left">←</button>
+              <button class="btn-xs" onclick="nudgeSelectedROI(0, -3)" title="Nudge Up">↑</button>
+              <button class="btn-xs" onclick="nudgeSelectedROI(0, 3)" title="Nudge Down">↓</button>
+              <button class="btn-xs" onclick="nudgeSelectedROI(3, 0)" title="Nudge Right">→</button>
+            </div>
+            <div class="roi-btn-group" title="Grow / Shrink ROI">
+              <button class="btn-xs" onclick="scaleSelectedROI(4)" title="Expand (+4px)">+ Expand</button>
+              <button class="btn-xs" onclick="scaleSelectedROI(-4)" title="Shrink (-4px)">- Shrink</button>
+            </div>
+            <button class="btn-xs btn-danger-soft" onclick="deleteSelectedROI()" title="Delete Selected ROI">
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+              Delete
+            </button>
+            <button class="btn-xs btn-primary" onclick="deselectROI()" title="Finish Editing">
+              ✓ Done
+            </button>
+          </div>
+        </div>
+
+        <!-- Direct ROI Selection Guide Banner -->
+        <div class="direct-guide-banner" id="direct-guide-banner" style="display: none;">
+          <span class="pulse-dot"></span>
+          <span><strong>Image Ready for ROI:</strong> Click &amp; drag directly on the wheel to draw ROI(s) around
+            characters, then click <em>Run OCR Verification</em>. (Pass 1 Straighten is NOT needed if wheel is already
+            straight).</span>
+        </div>
+
+        <!-- Canvas Viewport -->
+        <div class="canvas-viewport" id="canvas-container">
+          <div class="canvas-placeholder" id="canvas-placeholder">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <circle cx="8.5" cy="8.5" r="1.5"></circle>
+              <polyline points="21 15 16 10 5 21"></polyline>
+            </svg>
+            <div style="font-weight: 600; font-size: 1.1rem;">No Image Loaded</div>
+            <div style="font-size: 0.85rem;">Capture a snapshot from the Live Webcam in Step 1 to select ROIs directly,
+              or optionally straighten it.</div>
+          </div>
+          <canvas id="roi-canvas" style="display: none;"></canvas>
+        </div>
+
+      </main>
+
+    </main>
+  </div>
+
+  <!-- =========================================================================
+       SCREEN 2: Marking Templates
+       ========================================================================= -->
+  <div id="screen-templates" class="screen">
+    <div class="templates-container">
+
+      <!-- Templates Header -->
+      <div class="templates-header">
+        <div>
+          <h2 class="templates-title">
+            <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+            </svg>
+            Marking Templates
+          </h2>
+          <p class="templates-subtitle">Manage wheel model marking specifications for OCR verification</p>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: center;">
+          <input type="file" id="excel-file-input" accept=".xlsx,.xls" style="display: none;"
+            onchange="handleExcelFileSelected(event)" />
+          <button class="btn btn-outline" onclick="document.getElementById('excel-file-input').click()">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="12" y1="18" x2="12" y2="12"></line>
+              <polyline points="9 15 12 12 15 15"></polyline>
+            </svg>
+            Import from Excel
+          </button>
+          <button class="btn btn-primary" onclick="openTemplateForm()">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            Add New Template
+          </button>
+        </div>
+      </div>
+
+      <!-- Templates Table -->
+      <div class="panel-card" style="padding: 0; overflow: hidden;">
+        <table class="templates-table" id="templates-table">
+          <thead>
+            <tr>
+              <th>Wheel Code</th>
+              <th>Customer</th>
+              <th>Logo</th>
+              <th>Front Marking</th>
+              <th>Rear Marking</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="templates-tbody">
+            <tr>
+              <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 40px;">Loading templates...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Template Form (Add/Edit) -->
+      <div id="template-form-overlay" class="form-overlay" style="display: none;">
+        <div class="template-form-card">
+          <div class="form-header">
+            <h3 id="template-form-title">Add New Template</h3>
+            <button class="form-close-btn" onclick="closeTemplateForm()">&times;</button>
+          </div>
+
+          <form id="template-form" onsubmit="submitTemplateForm(event)">
+            <!-- Basic Info Row -->
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Wheel Code (Model Number) *</label>
+                <input type="text" id="tf-wheel-code" class="form-input" placeholder="e.g. LP1123" required />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Customer *</label>
+                <input type="text" id="tf-customer" class="form-input" placeholder="e.g. MSIL" required />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Logo Option</label>
+                <select id="tf-logo-required" class="form-input">
+                  <option value="front">IST Logo (Front Only)</option>
+                  <option value="none">No Logo</option>
+                  <option value="both">IST Logo (Both Sides)</option>
+                  <option value="rear">IST Logo (Rear Only)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">OCR Type</label>
+                <select id="tf-ocr-type" class="form-input">
+                  <option value="Full Text Match">Full Text Match</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Status</label>
+                <select id="tf-active" class="form-input">
+                  <option value="true">Active</option>
+                  <option value="false">Inactive</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Front Marking Section -->
+            <div class="form-section">
+              <div class="form-section-title">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path d="M21 3l-6 6"></path>
+                  <path d="M14 3h7v7"></path>
+                  <path d="M3 21l6-6"></path>
+                  <path d="M10 21H3v-7"></path>
+                </svg>
+                Front Marking
+              </div>
+              <div class="form-row">
+                <div class="form-group" style="flex: 4;">
+                  <label class="form-label">Full Marking Text</label>
+                  <input type="text" id="tf-front-full-text" class="form-input font-mono"
+                    placeholder="E13X4.00B DOT IS9436 CM/L-9512455524 YY MM AA WCWLB" />
+                </div>
+                <div class="form-group" style="flex: 1;">
+                  <label class="form-label">Number of Segments</label>
+                  <input type="number" id="tf-front-segments" class="form-input" value="1" min="1" max="5"
+                    onchange="updateSegmentFields('front')" />
+                </div>
+              </div>
+              <input type="hidden" id="tf-front-distance" value="N/A" />
+              <div id="front-segments-container" class="segments-container">
+                <!-- Dynamic segment fields rendered here -->
+              </div>
+              <div class="form-group">
+                <label class="form-label">Expected OCR Pattern (fixed portion for validation)</label>
+                <input type="text" id="tf-front-pattern" class="form-input font-mono"
+                  placeholder="E13X4.00B DOT IS9436 CM/L-9512455524" />
+                <div class="form-hint">Enter the fixed characters expected from OCR. Dynamic tokens (YYMM, AA, etc.) can
+                  be excluded.</div>
+              </div>
+            </div>
+
+            <!-- Rear Marking Section -->
+            <div class="form-section">
+              <div class="form-section-title">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path d="M21 3l-6 6"></path>
+                  <path d="M14 3h7v7"></path>
+                  <path d="M3 21l6-6"></path>
+                  <path d="M10 21H3v-7"></path>
+                </svg>
+                Rear Marking
+              </div>
+              <div class="form-row">
+                <div class="form-group" style="flex: 4;">
+                  <label class="form-label">Full Marking Text</label>
+                  <input type="text" id="tf-rear-full-text" class="form-input font-mono"
+                    placeholder="LP1123 (or N/A)" />
+                </div>
+                <div class="form-group" style="flex: 1;">
+                  <label class="form-label">Number of Segments</label>
+                  <input type="number" id="tf-rear-segments" class="form-input" value="1" min="0" max="5"
+                    onchange="updateSegmentFields('rear')" />
+                </div>
+              </div>
+              <input type="hidden" id="tf-rear-distance" value="N/A" />
+              <div id="rear-segments-container" class="segments-container">
+                <!-- Dynamic segment fields rendered here -->
+              </div>
+              <div class="form-group">
+                <label class="form-label">Expected OCR Pattern (fixed portion for validation)</label>
+                <input type="text" id="tf-rear-pattern" class="form-input font-mono" placeholder="LP1123" />
+                <div class="form-hint">Enter the fixed characters expected from OCR, or leave blank if N/A.</div>
+              </div>
+            </div>
+
+            <!-- Hidden field for edit mode -->
+            <input type="hidden" id="tf-edit-id" value="" />
+
+            <div class="form-actions">
+              <button type="button" class="btn btn-outline" onclick="closeTemplateForm()">Cancel</button>
+              <button type="submit" class="btn btn-success" id="tf-submit-btn">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+                Save Template
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       SCREEN 3: Approval Screen
+       ========================================================================= -->
+  <div id="screen-approvals" class="screen">
+    <div class="approvals-container">
+
+      <!-- Approvals Header -->
+      <div class="approvals-header">
+        <div>
+          <h2 class="approvals-title">
+            <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            Admin Verification Approvals
+          </h2>
+          <div class="approvals-subtitle">
+            Admin review for wheel OCR verification records. Inspect Master vs Captured imagery, verify character
+            accuracy, and approve or reject.
+          </div>
+        </div>
+
+        <div class="approvals-stats">
+          <div class="stat-pill stat-pending">
+            <span class="stat-num" id="stat-pending-num">3</span>
+            <span class="stat-label">Pending</span>
+          </div>
+          <div class="stat-pill stat-approved">
+            <span class="stat-num" id="stat-approved-num">0</span>
+            <span class="stat-label">Approved</span>
+          </div>
+          <div class="stat-pill stat-rejected">
+            <span class="stat-num" id="stat-rejected-num">0</span>
+            <span class="stat-label">Rejected</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Approvals Toolbar / Filter Bar -->
+      <div class="approvals-toolbar">
+        <div class="status-tabs">
+          <button class="status-tab active" id="tab-status-pending" onclick="filterApprovals('pending')">
+            Pending Records
+            <span class="tab-badge" id="tab-badge-pending">3</span>
+          </button>
+          <button class="status-tab" id="tab-status-approved" onclick="filterApprovals('approved')">
+            Approved
+            <span class="tab-badge" id="tab-badge-approved">0</span>
+          </button>
+          <button class="status-tab" id="tab-status-rejected" onclick="filterApprovals('rejected')">
+            Rejected
+            <span class="tab-badge" id="tab-badge-rejected">0</span>
+          </button>
+          <button class="status-tab" id="tab-status-all" onclick="filterApprovals('all')">
+            All Records
+            <span class="tab-badge" id="tab-badge-all">3</span>
+          </button>
+        </div>
+
+        <div class="toolbar-group">
+          <input type="text" id="approvals-search-input" class="form-input"
+            placeholder="Search by Wheel Code, Operator..." oninput="onApprovalsSearch(this.value)"
+            style="width: 240px; padding: 6px 12px; font-size: 0.85rem;" />
+          <button class="btn btn-outline" onclick="loadAndRenderApprovals()" title="Refresh records">
+            <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <polyline points="1 20 1 14 7 14"></polyline>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+            </svg>
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <!-- Approvals Cards Container -->
+      <div id="approvals-cards-container" class="approvals-cards-list">
+        <!-- Dynamically rendered verification records -->
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Rejection Reason Modal -->
+  <div id="rejection-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-card" style="max-width: 520px;">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title" style="color: var(--accent-red); display: flex; align-items: center; gap: 8px;">
+            <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="15" y1="9" x2="9" y2="15"></line>
+              <line x1="9" y1="9" x2="15" y2="15"></line>
+            </svg>
+            <span id="rejection-modal-title">Reject Verification #25</span>
+          </h3>
+          <div class="modal-subtitle">Provide a mandatory reason for rejecting this verification record.</div>
+        </div>
+        <button class="modal-close" onclick="closeRejectionModal()">&times;</button>
+      </div>
+
+      <div class="modal-body" style="padding: 20px;">
+        <div class="form-group">
+          <label class="form-label" style="font-weight: 700;">Rejection Reason <span
+              style="color: var(--accent-red);">*</span></label>
+          <textarea id="rejection-reason-input" class="form-input" rows="3"
+            placeholder="Enter reason for rejection... (e.g. Text Mismatch on segment 1, Logo missing, Blurry capture)"
+            style="width: 100%; resize: vertical; font-size: 0.88rem;"></textarea>
+        </div>
+
+        <div style="margin-top: 10px;">
+          <span
+            style="font-size: 0.76rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 6px;">Quick
+            Presets:</span>
+          <div class="quick-preset-chips">
+            <button type="button" class="preset-chip"
+              onclick="setRejectionPreset('Text Mismatch between Master and Detected OCR')">Text Mismatch</button>
+            <button type="button" class="preset-chip"
+              onclick="setRejectionPreset('Missing IST Certification Logo')">Logo Missing</button>
+            <button type="button" class="preset-chip"
+              onclick="setRejectionPreset('Blurry image / low contrast capture')">Low Contrast</button>
+            <button type="button" class="preset-chip"
+              onclick="setRejectionPreset('Misaligned / Incorrect Wheel Side')">Wrong Side</button>
+            <button type="button" class="preset-chip" onclick="setRejectionPreset('Severe Tilt / ROI misaligned')">ROI
+              Misaligned</button>
+          </div>
+        </div>
+
+        <input type="hidden" id="rejection-record-id" value="" />
+
+        <div class="form-actions" style="margin-top: 24px; display: flex; justify-content: flex-end; gap: 10px;">
+          <button type="button" class="btn btn-outline" onclick="closeRejectionModal()">Cancel</button>
+          <button type="button" class="btn btn-danger" id="btn-confirm-reject" onclick="confirmRejectRecord()">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            CONFIRM REJECT
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js?v=3.9.2"></script>
+</body>
+
+</html>

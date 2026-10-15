@@ -1,0 +1,899 @@
+{
+  "templates": [
+    {
+      "id": "LP1367",
+      "wheel_code": "LP1367",
+      "customer": "MSIL",
+      "active": true,
+      "logo": "IST",
+      "logo_required": true,
+      "logo_side": "rear",
+      "front_marking": {
+        "full_text": "E37.5 5 1/2JX14 E4B11015AD/BD YYMM AA WCWL B",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "E37.5 5 1/2JX14 E4B11015AD/BD"
+          },
+          {
+            "segment_num": 2,
+            "text": "YYMM AA WCWL B"
+          }
+        ],
+        "distance_spec": "55±1 mm",
+        "logo_required": false
+      },
+      "rear_marking": {
+        "full_text": "IS9436 logo.png CM/L-9512455524 DOT",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "IS9436"
+          },
+          {
+            "segment_num": 2,
+            "text": "CM/L-9512455524 DOT"
+          }
+        ],
+        "distance_spec": "62±1 mm",
+        "logo_required": true
+      },
+      "ocr_type": "Full Text Match",
+      "expected_front_pattern": "E37.5 5 1/2JX14 E4B11015AD/BD B",
+      "expected_rear_pattern": "IS9436 logo.png CM/L-9512455524 DOT"
+    },
+    {
+      "id": "LP2049",
+      "wheel_code": "LP2049",
+      "customer": "MSIL",
+      "active": true,
+      "logo": "IST",
+      "logo_required": true,
+      "logo_side": "both",
+      "front_marking": {
+        "full_text": "15 X 5 1/2 J CH 45 LP2049 IS9436 logo.png CM/L-9512455524",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "15 X 5 1/2 J CH 45 LP2049 IS9436 logo.png CM/L-9512455524"
+          },
+          {
+            "segment_num": 2,
+            "text": "YY MM AA WCWLB"
+          }
+        ],
+        "distance_spec": "57±1 mm",
+        "logo_required": true
+      },
+      "rear_marking": {
+        "full_text": "N/A",
+        "segments": [],
+        "distance_spec": "N/A",
+        "logo_required": true
+      },
+      "ocr_type": "Full Text Match",
+      "expected_front_pattern": "15 X 5 1/2 J CH 45 LP2049 IS9436 logo.png CM/L-9512455524",
+      "expected_rear_pattern": "N/A"
+    },
+    {
+      "id": "LP2027",
+      "wheel_code": "LP2027",
+      "customer": "SUZIKI",
+      "active": true,
+      "logo": "IST",
+      "logo_required": true,
+      "logo_side": "rear",
+      "front_marking": {
+        "full_text": "12X2.15 WCWL B LP2027 YYMM A FOR TUBELESS",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "12X2.15 WCWL B LP2027 YYMM A FOR TUBELESS"
+          }
+        ],
+        "distance_spec": "32±1 mm",
+        "logo_required": false
+      },
+      "rear_marking": {
+        "full_text": "IS16192 (PART 2) CM/L-9512457318",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "IS16192"
+          },
+          {
+            "segment_num": 2,
+            "text": "(PART 2)"
+          },
+          {
+            "segment_num": 3,
+            "text": "CM/L-9512457318"
+          }
+        ],
+        "distance_spec": "20±1 mm",
+        "logo_required": true
+      },
+      "ocr_type": "Full Text Match",
+      "expected_front_pattern": "12X2.15 B LP2027 A FOR TUBELESS",
+      "expected_rear_pattern": "IS16192 (PART 2) CM/L-9512457318"
+    },
+    {
+      "id": "LP1193",
+      "wheel_code": "LP1193",
+      "customer": "TATA",
+      "active": true,
+      "logo": "IST",
+      "logo_required": true,
+      "logo_side": "rear",
+      "front_marking": {
+        "full_text": "YYMM A E12X4J DOT WILR LP1193",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "YYMM A E12X4J DOT WILR LP1193"
+          }
+        ],
+        "distance_spec": "52±1 mm",
+        "logo_required": false
+      },
+      "rear_marking": {
+        "full_text": "IS9436 logo.png CM/L-8700141111",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "IS9436"
+          },
+          {
+            "segment_num": 2,
+            "text": "CM/L-8700141111"
+          }
+        ],
+        "distance_spec": "51±1 mm",
+        "logo_required": true
+      },
+      "ocr_type": "Full Text Match",
+      "expected_front_pattern": "A E12X4J DOT WILR LP1193",
+      "expected_rear_pattern": "IS9436 logo.png CM/L-8700141111"
+    },
+    {
+      "id": "LP2176",
+      "wheel_code": "LP2176",
+      "customer": "MSIL",
+      "active": true,
+      "logo": "IST",
+      "logo_required": true,
+      "logo_side": "front",
+      "front_marking": {
+        "full_text": "16X6J CH 40 LP2176 IS 9436 logo.png CM/L-9512455524 YYMM AA WCWLB",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "16X6J CH 40 LP2176 IS 9436"
+          },
+          {
+            "segment_num": 2,
+            "text": "CM/L-9512455524"
+          },
+          {
+            "segment_num": 3,
+            "text": "YYMM AA WCWLB"
+          }
+        ],
+        "distance_spec": "57±1.0 mm",
+        "logo_required": true
+      },
+      "rear_marking": {
+        "full_text": "N/A",
+        "segments": [],
+        "distance_spec": "N/A",
+        "logo_required": false
+      },
+      "ocr_type": "Full Text Match",
+      "expected_front_pattern": "16X6J CH 40 LP2176 IS 9436 logo.png CM/L-9512455524",
+      "expected_rear_pattern": "N/A"
+    },
+    {
+      "id": "LP2137",
+      "wheel_code": "LP2137",
+      "customer": "MSIL",
+      "active": true,
+      "logo": "IST",
+      "logo_required": true,
+      "logo_side": "front",
+      "front_marking": {
+        "full_text": "15X5J CH 40 DOT IS 9436 logo.png CM/L-9512455524 SNI YYMM AA WCWL B",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "15X5J CH 40 DOT IS 9436"
+          },
+          {
+            "segment_num": 2,
+            "text": "CM/L-9512455524"
+          },
+          {
+            "segment_num": 3,
+            "text": "SNI"
+          },
+          {
+            "segment_num": 4,
+            "text": "YYMM"
+          },
+          {
+            "segment_num": 5,
+            "text": "AA WCWL B"
+          }
+        ],
+        "distance_spec": "58±1 mm",
+        "logo_required": true
+      },
+      "rear_marking": {
+        "full_text": "LP2137 MSIL 43210 82S01 MADE IN INDIA",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "LP2137 MSIL"
+          },
+          {
+            "segment_num": 2,
+            "text": "43210 82S01"
+          },
+          {
+            "segment_num": 3,
+            "text": "MADE IN INDIA"
+          }
+        ],
+        "distance_spec": "104±1 mm",
+        "logo_required": false
+      },
+      "ocr_type": "Full Text Match",
+      "expected_front_pattern": "15X5J CH 40 DOT IS 9436 logo.png CM/L-9512455524 SNI B",
+      "expected_rear_pattern": "LP2137 MSIL 43210 82S01 MADE IN INDIA"
+    },
+    {
+      "id": "LP1408",
+      "wheel_code": "LP1408",
+      "customer": "MSIL",
+      "active": true,
+      "logo": "IST",
+      "logo_required": true,
+      "logo_side": "front",
+      "front_marking": {
+        "full_text": "13X4 1/2J CH DOT IS9436 logo.png CM/L-9512455524 YYMM AA WCWL B",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "13X4 1/2J CH DOT IS9436"
+          },
+          {
+            "segment_num": 2,
+            "text": "CM/L-9512455524"
+          },
+          {
+            "segment_num": 3,
+            "text": "YYMM"
+          },
+          {
+            "segment_num": 4,
+            "text": "AA WCWL B"
+          }
+        ],
+        "distance_spec": "57±1 mm",
+        "logo_required": true
+      },
+      "rear_marking": {
+        "full_text": "LP1348",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "LP1348"
+          }
+        ],
+        "distance_spec": " mm",
+        "logo_required": false
+      },
+      "ocr_type": "Full Text Match",
+      "expected_front_pattern": "13X4 1/2J CH DOT IS9436 logo.png CM/L-9512455524 B",
+      "expected_rear_pattern": "LP1348"
+    },
+    {
+      "id": "LP1295",
+      "wheel_code": "LP1295",
+      "customer": "MSIL",
+      "active": true,
+      "logo": "IST",
+      "logo_required": true,
+      "logo_side": "front",
+      "front_marking": {
+        "full_text": "14 X 5J CH 40 LP1295 IS9436 logo.png CM/L-9512455524 YYMM AA WCWLB",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "14 X 5J CH 40"
+          },
+          {
+            "segment_num": 2,
+            "text": "LP1295 IS9436"
+          },
+          {
+            "segment_num": 3,
+            "text": "CM/L-9512455524"
+          },
+          {
+            "segment_num": 4,
+            "text": "YYMM AA WCWLB"
+          }
+        ],
+        "distance_spec": "57±1 mm",
+        "logo_required": true
+      },
+      "rear_marking": {
+        "full_text": "N/A",
+        "segments": [],
+        "distance_spec": "57±1 mm",
+        "logo_required": false
+      },
+      "ocr_type": "Full Text Match",
+      "expected_front_pattern": "14 X 5J CH 40 LP1295 IS9436 logo.png CM/L-9512455524",
+      "expected_rear_pattern": "N/A"
+    },
+    {
+      "id": "LP2084",
+      "wheel_code": "LP2084",
+      "customer": "MSIL",
+      "active": true,
+      "logo": "IST",
+      "logo_required": true,
+      "logo_side": "front",
+      "front_marking": {
+        "full_text": "13X41/2J CH 45 DOT IS9436 logo.png CM/L-9512455524 YY MM AA WCWLB",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "13X41/2J CH 45 DOT IS9436"
+          },
+          {
+            "segment_num": 2,
+            "text": "CM/L-9512455524"
+          },
+          {
+            "segment_num": 3,
+            "text": "YY MM AA WCWLB"
+          }
+        ],
+        "distance_spec": "55±1 mm",
+        "logo_required": true
+      },
+      "rear_marking": {
+        "full_text": "LP2084",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "LP2084"
+          }
+        ],
+        "distance_spec": "62±1 mm",
+        "logo_required": false
+      },
+      "ocr_type": "Full Text Match",
+      "expected_front_pattern": "13X41/2J CH 45 DOT IS9436 logo.png CM/L-9512455524",
+      "expected_rear_pattern": "LP2084"
+    },
+    {
+      "id": "LP2145",
+      "wheel_code": "LP2145",
+      "customer": "MSIL",
+      "active": true,
+      "logo": "IST",
+      "logo_required": true,
+      "logo_side": "front",
+      "front_marking": {
+        "full_text": "13X4.00B CH 40 LP 2145 IS9436 logo.png CM/L-9512455524 YY MM AA WCWLB",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "13X4.00B CH 40 LP 2145"
+          },
+          {
+            "segment_num": 2,
+            "text": "IS9436"
+          },
+          {
+            "segment_num": 3,
+            "text": "CM/L-9512455524"
+          },
+          {
+            "segment_num": 4,
+            "text": "YY MM AA WCWLB"
+          }
+        ],
+        "distance_spec": "53±1 mm",
+        "logo_required": true
+      },
+      "rear_marking": {
+        "full_text": "MSIL 43210 53T00",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "MSIL 43210 53T00"
+          }
+        ],
+        "distance_spec": "49±1 mm",
+        "logo_required": false
+      },
+      "ocr_type": "Full Text Match",
+      "expected_front_pattern": "13X4.00B CH 40 LP 2145 IS9436 logo.png CM/L-9512455524",
+      "expected_rear_pattern": "MSIL 43210 53T00"
+    },
+    {
+      "id": "LP2152",
+      "wheel_code": "LP2152",
+      "customer": "MSIL",
+      "active": true,
+      "logo": "IST",
+      "logo_required": true,
+      "logo_side": "front",
+      "front_marking": {
+        "full_text": "13 X 4.00B H2 45 DOT IS9436 logo.png CM/L-9512455524 YY MM AA WCWLB",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "13 X 4.00B H2 45 DOT IS9436"
+          },
+          {
+            "segment_num": 2,
+            "text": "CM/L-9512455524"
+          },
+          {
+            "segment_num": 3,
+            "text": "YY MM AA WCWLB"
+          }
+        ],
+        "distance_spec": "48±1 mm",
+        "logo_required": true
+      },
+      "rear_marking": {
+        "full_text": "LP 2152 MSIL 4321078T00",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "LP 2152 MSIL 4321078T00"
+          }
+        ],
+        "distance_spec": "47±1 mm",
+        "logo_required": false
+      },
+      "ocr_type": "Full Text Match",
+      "expected_front_pattern": "13 X 4.00B H2 45 DOT IS9436 logo.png CM/L-9512455524",
+      "expected_rear_pattern": "LP 2152 MSIL 4321078T00"
+    },
+    {
+      "id": "LP1123",
+      "wheel_code": "LP1123",
+      "customer": "MSIL",
+      "active": true,
+      "logo": "IST",
+      "logo_required": true,
+      "logo_side": "front",
+      "front_marking": {
+        "full_text": "E13X4.00B DOT IS9436 logo.png CM/L-9512455524 YY MM AA WCWLB",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "E13X4.00B DOT IS9436"
+          },
+          {
+            "segment_num": 2,
+            "text": "CM/L-9512455524 YY MM AA WCWLB"
+          }
+        ],
+        "distance_spec": "48±1 mm",
+        "logo_required": true
+      },
+      "rear_marking": {
+        "full_text": "LP1123",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "LP1123"
+          }
+        ],
+        "distance_spec": "48±1 mm",
+        "logo_required": false
+      },
+      "ocr_type": "Full Text Match",
+      "expected_front_pattern": "E13X4.00B DOT IS9436 logo.png CM/L-9512455524",
+      "expected_rear_pattern": "LP1123"
+    },
+    {
+      "id": "LP2109",
+      "wheel_code": "LP2109",
+      "customer": "M&M",
+      "active": true,
+      "logo": "IST",
+      "logo_required": true,
+      "logo_side": "rear",
+      "front_marking": {
+        "full_text": "YYMM WCWL B 6JX15 H2 LP2109 AA",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "YYMM WCWL B 6JX15 H2 LP2109 AA"
+          }
+        ],
+        "distance_spec": "58±1 mm",
+        "logo_required": false
+      },
+      "rear_marking": {
+        "full_text": "IS9436 CM /L-9512455524",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "IS9436"
+          },
+          {
+            "segment_num": 2,
+            "text": "CM /L-9512455524"
+          }
+        ],
+        "distance_spec": "N/A",
+        "logo_required": true
+      },
+      "ocr_type": "Full Text Match",
+      "expected_front_pattern": "B 6JX15 H2 LP2109",
+      "expected_rear_pattern": "IS9436 CM /L-9512455524"
+    },
+    {
+      "id": "LP1054",
+      "wheel_code": "LP1054",
+      "customer": "MSIL",
+      "active": true,
+      "logo": "IST",
+      "logo_required": true,
+      "logo_side": "front",
+      "front_marking": {
+        "full_text": "E12X4.00B CH 40 DOT IS9436 logo.png CM/L-9512455524 YY MM AA WCWLB",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "E12X4.00B CH 40 DOT IS9436"
+          },
+          {
+            "segment_num": 2,
+            "text": "CM/L-9512455524 YY MM AA WCWLB"
+          }
+        ],
+        "distance_spec": "48±1 mm",
+        "logo_required": true
+      },
+      "rear_marking": {
+        "full_text": "LP1054",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "LP1054"
+          }
+        ],
+        "distance_spec": "N/A",
+        "logo_required": false
+      },
+      "ocr_type": "Full Text Match",
+      "expected_front_pattern": "E12X4.00B CH 40 DOT IS9436 logo.png CM/L-9512455524",
+      "expected_rear_pattern": "LP1054"
+    },
+    {
+      "id": "LP1136",
+      "wheel_code": "LP1136",
+      "customer": "MSIL",
+      "active": true,
+      "logo": "IST",
+      "logo_required": true,
+      "logo_side": "front",
+      "front_marking": {
+        "full_text": "12X4.00B CH DOT IS9436 logo.png CM/L-9512455524 YY MM AA WCWLB",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "12X4.00B CH DOT IS9436"
+          },
+          {
+            "segment_num": 2,
+            "text": "CM/L-9512455524"
+          },
+          {
+            "segment_num": 3,
+            "text": "YY MM AA WCWLB"
+          }
+        ],
+        "distance_spec": "48±1 mm",
+        "logo_required": true
+      },
+      "rear_marking": {
+        "full_text": "N/A",
+        "segments": [],
+        "distance_spec": "N/A",
+        "logo_required": false
+      },
+      "ocr_type": "Full Text Match",
+      "expected_front_pattern": "12X4.00B CH DOT IS9436 logo.png CM/L-9512455524",
+      "expected_rear_pattern": "N/A"
+    },
+    {
+      "id": "LP1288 (IS9438)",
+      "wheel_code": "LP1288 (IS9438)",
+      "customer": "TATA",
+      "active": true,
+      "logo": "IST",
+      "logo_required": true,
+      "logo_side": "rear",
+      "front_marking": {
+        "full_text": "YYMM WCWL B A 4 1/2JX13 CH LP1288 AA",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "YYMM WCWL B A 4 1/2JX13 CH LP1288 AA"
+          }
+        ],
+        "distance_spec": "55±1 mm",
+        "logo_required": false
+      },
+      "rear_marking": {
+        "full_text": "IS9438 logo.png CM/L-9512496282",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "IS9438"
+          },
+          {
+            "segment_num": 2,
+            "text": "CM/L-9512496282"
+          }
+        ],
+        "distance_spec": "61±1 mm",
+        "logo_required": true
+      },
+      "ocr_type": "Full Text Match",
+      "expected_front_pattern": "B A 4 1/2JX13 CH LP1288",
+      "expected_rear_pattern": "IS9438 logo.png CM/L-9512496282"
+    },
+    {
+      "id": "LP1288 (IS9436) NOT IN USE",
+      "wheel_code": "LP1288 (IS9436) NOT IN USE",
+      "customer": "TATA",
+      "active": true,
+      "logo": "IST",
+      "logo_required": true,
+      "logo_side": "rear",
+      "front_marking": {
+        "full_text": "YYMM WCWL B A 4 1/2JX13 CH LP1288 AA",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "YYMM WCWL B A 4 1/2JX13 CH LP1288 AA"
+          }
+        ],
+        "distance_spec": "55±1 mm",
+        "logo_required": false
+      },
+      "rear_marking": {
+        "full_text": "IS9436 logo.png CM/L-9512455524",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "IS9436"
+          },
+          {
+            "segment_num": 2,
+            "text": "CM/L-9512455524"
+          }
+        ],
+        "distance_spec": "61±1 mm",
+        "logo_required": true
+      },
+      "ocr_type": "Full Text Match",
+      "expected_front_pattern": "B A 4 1/2JX13 CH LP1288",
+      "expected_rear_pattern": "IS9436 logo.png CM/L-9512455524"
+    },
+    {
+      "id": "LP1288",
+      "wheel_code": "LP1288",
+      "customer": "TATA",
+      "active": true,
+      "logo": "",
+      "logo_required": false,
+      "logo_side": "none",
+      "front_marking": {
+        "full_text": "YYMM A WILB 4 1/2JX13 CH LP1288 A93699",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "YYMM A WILB 4 1/2JX13 CH LP1288 A93699"
+          }
+        ],
+        "distance_spec": "55±1 mm",
+        "logo_required": false
+      },
+      "rear_marking": {
+        "full_text": "N/A",
+        "segments": [],
+        "distance_spec": " mm",
+        "logo_required": false
+      },
+      "ocr_type": "Full Text Match",
+      "expected_front_pattern": "A WILB 4 1/2JX13 CH LP1288 A93699",
+      "expected_rear_pattern": "N/A"
+    },
+    {
+      "id": "LP 1388",
+      "wheel_code": "LP 1388",
+      "customer": "MSIL",
+      "active": true,
+      "logo": "IST",
+      "logo_required": true,
+      "logo_side": "front",
+      "front_marking": {
+        "full_text": "12X4J 40 CH DOT IS9436 logo.png CM/L-9512455524 YY MM AA WCWLB",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "12X4J 40 CH DOT IS9436"
+          },
+          {
+            "segment_num": 2,
+            "text": "CM/L-9512455524"
+          },
+          {
+            "segment_num": 3,
+            "text": "YY MM AA WCWLB"
+          }
+        ],
+        "distance_spec": "55±1 mm",
+        "logo_required": true
+      },
+      "rear_marking": {
+        "full_text": "LP1388",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "LP1388"
+          }
+        ],
+        "distance_spec": "62±1 mm",
+        "logo_required": false
+      },
+      "ocr_type": "Full Text Match",
+      "expected_front_pattern": "12X4J 40 CH DOT IS9436 logo.png CM/L-9512455524",
+      "expected_rear_pattern": "LP1388"
+    },
+    {
+      "id": "LP1341",
+      "wheel_code": "LP1341",
+      "customer": "MSIL",
+      "active": true,
+      "logo": "IST",
+      "logo_required": true,
+      "logo_side": "front",
+      "front_marking": {
+        "full_text": "15 X 5 1/2 J CH DOT IS9436 logo.png CM/L-9512455524 SNI YY MM AA WCWLB",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "15 X 5 1/2 J CH DOT IS9436"
+          },
+          {
+            "segment_num": 2,
+            "text": "CM/L-9512455524"
+          },
+          {
+            "segment_num": 3,
+            "text": "SNI"
+          },
+          {
+            "segment_num": 4,
+            "text": "YY MM AA WCWLB"
+          }
+        ],
+        "distance_spec": "58±1 mm",
+        "logo_required": true
+      },
+      "rear_marking": {
+        "full_text": "LP1341 MADE IN INDIA",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "LP1341 MADE IN INDIA"
+          }
+        ],
+        "distance_spec": "56±1 mm",
+        "logo_required": false
+      },
+      "ocr_type": "Full Text Match",
+      "expected_front_pattern": "15 X 5 1/2 J CH DOT IS9436 logo.png CM/L-9512455524 SNI",
+      "expected_rear_pattern": "LP1341 MADE IN INDIA"
+    },
+    {
+      "id": "LP1262",
+      "wheel_code": "LP1262",
+      "customer": "MSIL",
+      "active": true,
+      "logo": "IST",
+      "logo_required": true,
+      "logo_side": "front",
+      "front_marking": {
+        "full_text": "14X4 1/2J CH DOT IS9436 logo.png CM/L-9512455524 YY MM AA WCWLB",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "14X4 1/2J CH DOT IS9436"
+          },
+          {
+            "segment_num": 2,
+            "text": "CM/L-9512455524"
+          },
+          {
+            "segment_num": 3,
+            "text": "YY MM AA WCWLB"
+          }
+        ],
+        "distance_spec": "N/A",
+        "logo_required": true
+      },
+      "rear_marking": {
+        "full_text": "LP 1262",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "LP 1262"
+          }
+        ],
+        "distance_spec": "N/A",
+        "logo_required": false
+      },
+      "ocr_type": "Full Text Match",
+      "expected_front_pattern": "14X4 1/2J CH DOT IS9436 logo.png CM/L-9512455524",
+      "expected_rear_pattern": "LP 1262"
+    },
+    {
+      "id": "LP1227",
+      "wheel_code": "LP1227",
+      "customer": "MSIL",
+      "active": true,
+      "logo": "IST",
+      "logo_required": true,
+      "logo_side": "front",
+      "front_marking": {
+        "full_text": "15X6 J CH DOT IS9436 logo.png CM/L-9512455524 YY MM AA WCWLB",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "15X6 J CH DOT IS9436"
+          },
+          {
+            "segment_num": 2,
+            "text": "CM/L-9512455524"
+          },
+          {
+            "segment_num": 3,
+            "text": "YY MM AA WCWLB"
+          }
+        ],
+        "distance_spec": "N/A",
+        "logo_required": true
+      },
+      "rear_marking": {
+        "full_text": "LP 1227",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "LP 1227"
+          }
+        ],
+        "distance_spec": "N/A",
+        "logo_required": false
+      },
+      "ocr_type": "Full Text Match",
+      "expected_front_pattern": "15X6 J CH DOT IS9436 logo.png CM/L-9512455524",
+      "expected_rear_pattern": "LP 1227"
+    }
+  ]
+}
