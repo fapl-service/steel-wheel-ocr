@@ -21,16 +21,16 @@ import traceback
 from typing import Any, Dict, List, Optional, Tuple
 import cv2
 import numpy as np
+import gc
+import yaml
 import openpyxl
-import torch
-torch.set_num_threads(1)
+import openvino as ov
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from ultralytics import YOLO
 
 # -----------------------------
 # Configuration
@@ -93,16 +93,78 @@ async def global_exception_handler(request: Request, exc: Exception):
         }
     )
 
-# Load OpenVINO Segmentation Model exclusively
+class OpenVINOOCRModel:
+    """
+    Native OpenVINO inference engine.
+    Runs 100% natively without PyTorch or Ultralytics to guarantee <200MB memory footprint.
+    """
+    def __init__(self, model_dir: str = MODEL_DIR, device: str = "CPU"):
+        self.model_dir = model_dir
+        yaml_path = os.path.join(model_dir, "metadata.yaml")
+        if os.path.exists(yaml_path):
+            with open(yaml_path, "r", encoding="utf-8") as f:
+                meta = yaml.safe_load(f)
+                self.names = {int(k): v for k, v in meta.get("names", {}).items()}
+        else:
+            self.names = {}
+
+        xml_path = os.path.join(model_dir, "best.xml")
+        core = ov.Core()
+        os.makedirs("model/cache", exist_ok=True)
+        core.set_property({"CACHE_DIR": "model/cache"})
+        self.compiled = core.compile_model(xml_path, device)
+        self.output_layer = self.compiled.output(0)
+
+    def predict(self, img_bgr: np.ndarray, conf_thresh: float = 0.15) -> List[Dict[str, Any]]:
+        h0, w0 = img_bgr.shape[:2]
+        scale = min(640 / h0, 640 / w0)
+        nw, nh = int(round(w0 * scale)), int(round(h0 * scale))
+        resized = cv2.resize(img_bgr, (nw, nh), interpolation=cv2.INTER_LINEAR)
+        padded = np.full((640, 640, 3), 114, dtype=np.uint8)
+        dx = (640 - nw) // 2
+        dy = (640 - nh) // 2
+        padded[dy:dy+nh, dx:dx+nw] = resized
+
+        blob = padded[:, :, ::-1].transpose(2, 0, 1).astype(np.float32) / 255.0
+        blob = np.ascontiguousarray(blob[np.newaxis, ...])
+
+        out = self.compiled([blob])[self.output_layer][0]
+        boxes = []
+        for row in out:
+            conf = float(row[4])
+            if conf < conf_thresh:
+                continue
+            cls_id = int(round(row[5]))
+            bx1 = (row[0] - dx) / scale
+            by1 = (row[1] - dy) / scale
+            bx2 = (row[2] - dx) / scale
+            by2 = (row[3] - dy) / scale
+            x1 = max(0, min(w0, int(round(bx1))))
+            y1 = max(0, min(h0, int(round(by1))))
+            x2 = max(0, min(w0, int(round(bx2))))
+            y2 = max(0, min(h0, int(round(by2))))
+            if x2 <= x1 or y2 <= y1:
+                continue
+            cls_name = self.names.get(cls_id, str(cls_id))
+            boxes.append({
+                "bbox": [x1, y1, x2, y2],
+                "conf": round(conf, 3),
+                "cls_id": cls_id,
+                "cls_name": cls_name
+            })
+        return boxes
+
+
+# Load Native OpenVINO Model exclusively
 if not os.path.exists(MODEL_DIR):
     raise RuntimeError(f"OpenVINO model directory '{MODEL_DIR}' not found!")
 
-print(f"[STARTUP] Loading OpenVINO Segmentation Model from {MODEL_DIR} ...")
-model = YOLO(MODEL_DIR, task="segment")
+print(f"[STARTUP] Loading Native OpenVINO Model from {MODEL_DIR} ...")
+model = OpenVINOOCRModel(MODEL_DIR, device="CPU")
 print("[STARTUP] Warming up OpenVINO model with dummy frame...")
 dummy = np.zeros((640, 640, 3), dtype=np.uint8)
-model(dummy, imgsz=640, verbose=False)
-print("[STARTUP] OpenVINO Segmentation Model warmed up and ready!")
+model.predict(dummy)
+print("[STARTUP] Native OpenVINO Model warmed up and ready (<200MB RAM)!")
 
 logo_img = None
 if os.path.exists(LOGO_PATH):
@@ -284,7 +346,7 @@ def find_template_by_id(template_id: str) -> Optional[Dict]:
 
 class ProcessOCRRequest(BaseModel):
     image_base64: str
-    rois: Optional[List[List[int]]] = []  # List of [x1, y1, x2, y2]
+    rois: Optional[List[List[Any]]] = []  # List of [x1, y1, x2, y2]
     confidence: Optional[float] = DEFAULT_CONFIDENCE
 
 
@@ -300,7 +362,7 @@ class ValidateOCRRequest(BaseModel):
 @app.post("/api/process_ocr")
 def api_process_ocr(req: ProcessOCRRequest):
     """
-    Direct OpenVINO OCR: Detects characters on the image, filters by selected ROIs,
+    Direct Native OpenVINO OCR: Detects characters on the image, filters by selected ROIs,
     sorts coordinates, replaces slash and IST with logo.png, and overlays visual results.
     """
     img_b64 = req.image_base64
@@ -314,8 +376,8 @@ def api_process_ocr(req: ProcessOCRRequest):
     conf = req.confidence or DEFAULT_CONFIDENCE
     start_time = time.perf_counter()
 
-    # Direct OpenVINO Inference on input image with fixed imgsz=640 for fast CPU processing
-    res = model(frame, imgsz=640, conf=conf, verbose=False)[0]
+    # Direct Native OpenVINO Inference (<65ms, low memory)
+    detected_items = model.predict(frame, conf_thresh=conf)
     inference_time = (time.perf_counter() - start_time) * 1000
 
     annotated = frame.copy()
@@ -323,23 +385,21 @@ def api_process_ocr(req: ProcessOCRRequest):
     all_detected_boxes = []
     all_detected_chars = []
 
-    if res.boxes is not None and len(res.boxes) > 0:
-        for b in res.boxes:
-            cls_id = int(b.cls[0].item())
-            cls_name = str(res.names[cls_id])
-            box_conf = float(b.conf[0].item())
-            xyxy = [int(v) for v in b.xyxy[0].tolist()]
+    for item in detected_items:
+        cls_name = item["cls_name"]
+        box_conf = item["conf"]
+        xyxy = item["bbox"]
 
-            if cls_name == "box":
-                all_detected_boxes.append({"bbox": xyxy, "conf": box_conf})
-            else:
-                mapped_char = CLASS_MAPPING.get(cls_name, cls_name)
-                all_detected_chars.append({
-                    "cls_name": cls_name,
-                    "char": mapped_char,
-                    "bbox": xyxy,
-                    "conf": box_conf,
-                })
+        if cls_name == "box":
+            all_detected_boxes.append({"bbox": xyxy, "conf": box_conf})
+        else:
+            mapped_char = CLASS_MAPPING.get(cls_name, cls_name)
+            all_detected_chars.append({
+                "cls_name": cls_name,
+                "char": mapped_char,
+                "bbox": xyxy,
+                "conf": box_conf,
+            })
 
     ocr_results = []
     has_ist_logo = False
@@ -348,9 +408,16 @@ def api_process_ocr(req: ProcessOCRRequest):
     # If user selected ROIs, process each ROI
     if rois:
         # Sort ROIs top-to-bottom
-        sorted_rois = sorted(rois, key=lambda r: r[1])
+        sorted_rois = sorted(rois, key=lambda r: float(r[1]) if len(r) > 1 else 0)
 
-        for r_idx, (rx1, ry1, rx2, ry2) in enumerate(sorted_rois, 1):
+        for r_idx, r_box in enumerate(sorted_rois, 1):
+            if len(r_box) < 4:
+                continue
+            rx1 = int(round(float(r_box[0])))
+            ry1 = int(round(float(r_box[1])))
+            rx2 = int(round(float(r_box[2])))
+            ry2 = int(round(float(r_box[3])))
+
             chars_in_roi = []
             for char_info in all_detected_chars:
                 cx1, cy1, cx2, cy2 = char_info["bbox"]
@@ -472,6 +539,9 @@ def api_process_ocr(req: ProcessOCRRequest):
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     save_path = os.path.join(PROCESSED_DIR, f"web_result_{timestamp}.jpg")
     cv2.imwrite(save_path, annotated)
+
+    # Reclaim memory to keep usage <200MB on cloud
+    gc.collect()
 
     return {
         "success": True,

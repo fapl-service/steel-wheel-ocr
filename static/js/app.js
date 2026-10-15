@@ -966,10 +966,10 @@ async function requestProcessOCR() {
 
   // Format rois array as [[x1, y1, x2, y2], ...]
   const roisPayload = state.rois.map(r => [
-    Math.min(r.x1, r.x2),
-    Math.min(r.y1, r.y2),
-    Math.max(r.x1, r.x2),
-    Math.max(r.y1, r.y2)
+    Math.round(Math.min(r.x1, r.x2)),
+    Math.round(Math.min(r.y1, r.y2)),
+    Math.round(Math.max(r.x1, r.x2)),
+    Math.round(Math.max(r.y1, r.y2))
   ]);
 
   try {
