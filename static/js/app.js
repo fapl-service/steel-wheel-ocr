@@ -92,6 +92,7 @@ const elements = {
   captureBtn: document.getElementById('capture-btn'),
   btnToggleDraw: document.getElementById('btn-toggle-draw'),
   btnToggleDrawText: document.getElementById('btn-toggle-draw-text'),
+  btnRotateCW: document.getElementById('btn-rotate-cw'),
   btnRunOCR: document.getElementById('btn-run-ocr'),
   btnClearROIs: document.getElementById('btn-clear-rois'),
   btnAutoDetect: document.getElementById('btn-auto-detect'),
@@ -397,6 +398,7 @@ function setOriginalImage(base64Str) {
   elements.btnClearROIs.disabled = false;
   elements.btnAutoDetect.disabled = false;
   if (elements.btnToggleDraw) elements.btnToggleDraw.disabled = false;
+  if (elements.btnRotateCW) elements.btnRotateCW.disabled = false;
 
   // Load snapshot immediately into canvas for direct ROI selection
   loadWorkingImage(base64Str);
@@ -421,6 +423,67 @@ function loadWorkingImage(base64Str) {
     resetCanvasZoom();
   };
   loadedActiveImage.src = base64Str;
+}
+
+function rotateWorkingImage(degrees = 90) {
+  if (!state.activeImageBase64) {
+    showToast('Please capture an image first', 'error');
+    return;
+  }
+
+  showToast(`Rotating image ${degrees}°...`, 'info');
+
+  const img = new Image();
+  img.onload = () => {
+    const w = img.naturalWidth || img.width;
+    const h = img.naturalHeight || img.height;
+
+    const rotCanvas = document.createElement('canvas');
+    const rotCtx = rotCanvas.getContext('2d');
+
+    // For 90 or 270 degree rotation, swap width and height
+    if (Math.abs(degrees) === 90 || Math.abs(degrees) === 270) {
+      rotCanvas.width = h;
+      rotCanvas.height = w;
+    } else {
+      rotCanvas.width = w;
+      rotCanvas.height = h;
+    }
+
+    // Translate to center, rotate, and draw
+    rotCtx.translate(rotCanvas.width / 2, rotCanvas.height / 2);
+    rotCtx.rotate((degrees * Math.PI) / 180);
+    rotCtx.drawImage(img, -w / 2, -h / 2);
+
+    const rotatedB64 = rotCanvas.toDataURL('image/jpeg', 0.88);
+
+    // Update active and original image state
+    state.activeImageBase64 = rotatedB64;
+    state.originalImageBase64 = rotatedB64;
+    state.annotatedImageBase64 = null;
+    state.rois = [];
+    state.selectedROIIndex = null;
+    state.lastOcrResults = null;
+
+    if (state.inspectionMode === 'two_shot') {
+      const current = state['shot' + state.activeShot];
+      if (current) {
+        current.imageBase64 = rotatedB64;
+        current.annotatedImageBase64 = null;
+        current.rois = [];
+        current.results = null;
+        current.text = '';
+      }
+    }
+
+    toggleDrawMode(false);
+    updateROILegend();
+
+    // Reload rotated image into canvas viewport
+    loadWorkingImage(rotatedB64);
+    showToast(`Image rotated ${degrees}° clockwise! Ready for ROI selection.`, 'success');
+  };
+  img.src = state.activeImageBase64;
 }
 
 // -----------------------------------------------------------------------------
@@ -1473,6 +1536,7 @@ function resetTwoShots() {
   const zoomTb = document.getElementById('canvas-zoom-toolbar');
   if (zoomTb) zoomTb.style.display = 'none';
   resetCanvasZoom();
+  if (elements.btnRotateCW) elements.btnRotateCW.disabled = true;
 
   updateCaptureButtonLabels();
   showToast('Ready for Image 1 capture / upload.');
@@ -3193,7 +3257,8 @@ function applyModalImageTransform() {
   const img = document.getElementById('modal-zoom-img');
   const badge = document.getElementById('modal-zoom-badge');
   if (!img) return;
-  img.style.transform = `translate(${modalZoomState.panX}px, ${modalZoomState.panY}px) scale(${modalZoomState.scale})`;
+  const rot = modalZoomState.rotation || 0;
+  img.style.transform = `translate(${modalZoomState.panX}px, ${modalZoomState.panY}px) scale(${modalZoomState.scale}) rotate(${rot}deg)`;
   if (badge) badge.textContent = `${Math.round(modalZoomState.scale * 100)}%`;
 }
 
@@ -3203,10 +3268,16 @@ function zoomModalImage(delta) {
   applyModalImageTransform();
 }
 
+function rotateModalImage(degrees = 90) {
+  modalZoomState.rotation = ((modalZoomState.rotation || 0) + degrees) % 360;
+  applyModalImageTransform();
+}
+
 function resetModalZoom() {
   modalZoomState.scale = 1.0;
   modalZoomState.panX = 0;
   modalZoomState.panY = 0;
+  modalZoomState.rotation = 0;
   applyModalImageTransform();
 }
 
