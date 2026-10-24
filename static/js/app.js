@@ -464,7 +464,6 @@ function rotateWorkingImage(degrees = 90) {
     state.rois = [];
     state.selectedROIIndex = null;
     state.lastOcrResults = null;
-
     if (state.inspectionMode === 'two_shot') {
       const current = state['shot' + state.activeShot];
       if (current) {
@@ -475,7 +474,6 @@ function rotateWorkingImage(degrees = 90) {
         current.text = '';
       }
     }
-
     toggleDrawMode(false);
     updateROILegend();
 
@@ -890,7 +888,6 @@ function toggleDrawMode(forceState) {
 
 function onCanvasMouseDown(e, isTouch = false) {
   if (!state.activeImageBase64) return false;
-
   // Middle-click, Right-click, or Pan-mode: drag to pan image
   if (!isTouch && (state.zoom.panMode || e.button === 1 || e.button === 2)) {
     state.zoom.isPanning = true;
@@ -901,7 +898,6 @@ function onCanvasMouseDown(e, isTouch = false) {
     if (elements.canvas) elements.canvas.style.cursor = 'grabbing';
     return true;
   }
-
   const pos = getCanvasCoordinates(e);
 
   // 1. If an ROI is selected, check its handles or interior

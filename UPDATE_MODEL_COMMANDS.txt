@@ -1,0 +1,111 @@
+================================================================================
+  STEEL WHEEL OCR VERIFICATION SYSTEM - STEP-BY-STEP MODEL UPDATE GUIDE
+================================================================================
+
+This guide provides the complete step-by-step instructions and commands to:
+1. Convert / export a newly trained YOLO PyTorch model (.pt) to OpenVINO format.
+2. Update the model files in this repository.
+3. Test locally.
+4. Commit and push the updated model to GitHub.
+
+--------------------------------------------------------------------------------
+PREREQUISITES
+--------------------------------------------------------------------------------
+Ensure you have the following installed in your Python environment:
+  pip install ultralytics openvino
+
+--------------------------------------------------------------------------------
+STEP 1: CONVERT / EXPORT PYTORCH MODEL (.pt) TO OPENVINO
+--------------------------------------------------------------------------------
+Option A: Using Python command
+Run the following Python one-liner to export your new weights (e.g., best.pt):
+
+  python -c "from ultralytics import YOLO; model = YOLO('best.pt'); model.export(format='openvino', imgsz=640, half=False)"
+
+Option B: Using Ultralytics CLI
+  yolo export model=best.pt format=openvino imgsz=640 half=false
+
+This command generates a folder named `best_openvino_model/` containing:
+  - best.bin        (Model weights binary)
+  - best.xml        (Model architecture/graph definition)
+  - metadata.yaml   (Model class names, labels, and input metadata)
+
+--------------------------------------------------------------------------------
+STEP 2: COPY / REPLACE FILES IN THE REPOSITORY
+--------------------------------------------------------------------------------
+Make sure the three generated files are placed inside the repository folder:
+  best_openvino_model/
+  ├── best.bin
+  ├── best.xml
+  └── metadata.yaml
+
+Windows PowerShell command to copy from your training folder (example):
+  Copy-Item -Path "path\to\your\new_model\*" -Destination "best_openvino_model\" -Force
+
+Linux / macOS command:
+  cp path/to/your/new_model/* best_openvino_model/
+
+--------------------------------------------------------------------------------
+STEP 3: TEST THE MODEL LOCALLY (RECOMMENDED)
+--------------------------------------------------------------------------------
+Before pushing to GitHub, test the application locally to verify the new model:
+  python app.py
+
+Open http://localhost:8000 in your browser, upload an image or run an inspection
+to verify that text detection, segmentation, and OCR work as expected without errors.
+
+--------------------------------------------------------------------------------
+STEP 4: CHECK FILE SIZES (GITHUB LIMIT SAFETY)
+--------------------------------------------------------------------------------
+GitHub has a 100 MB per-file upload limit. Ensure best.bin is under 100 MB:
+
+Windows PowerShell:
+  Get-ChildItem -Path "best_openvino_model" | Select-Object Name, Length
+
+Linux / macOS:
+  ls -lh best_openvino_model/
+
+(Typical size of YOLO26s-seg / YOLOv8s-seg in OpenVINO format is ~41.6 MB).
+
+--------------------------------------------------------------------------------
+STEP 5: GIT COMMANDS - COMMIT AND PUSH TO GITHUB
+--------------------------------------------------------------------------------
+Open terminal in the project directory:
+d:\Demo_Project\Steel Wheel OCR Verification System\ocr_detection\ocr_dection_inference
+
+Run these commands step by step:
+
+1. Check current status:
+   git status
+
+   (You should see modified files under best_openvino_model/)
+
+2. Stage the updated model files:
+   git add best_openvino_model/
+
+3. Verify staged files:
+   git status
+
+   (The files should now be listed under "Changes to be committed" in green)
+
+4. Commit the changes with a clear descriptive message:
+   git commit -m "Update best_openvino_model with latest model weights and metadata"
+
+5. Push the commit to GitHub:
+   git push origin main
+
+6. Confirm everything is pushed and working tree is clean:
+   git status
+
+   (Expected output: "nothing to commit, working tree clean")
+
+--------------------------------------------------------------------------------
+QUICK 1-LINER SHORTCUT (FOR FUTURE UPDATES)
+--------------------------------------------------------------------------------
+Windows PowerShell:
+  git add best_openvino_model; git commit -m "Update best_openvino_model weights"; git push origin main
+
+Linux / Bash:
+  git add best_openvino_model/ && git commit -m "Update best_openvino_model weights" && git push origin main
+
+================================================================================

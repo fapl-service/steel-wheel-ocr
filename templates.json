@@ -476,11 +476,11 @@
       "logo_required": true,
       "logo_side": "front",
       "front_marking": {
-        "full_text": "E13X4.00B DOT IS9436 logo.png CM/L-9512455524 YY MM AA WCWLB",
+        "full_text": "E13X4.00B D0T IS9436 logo.png CM/L-9512455524 YY MM AA WCWLB",
         "segments": [
           {
             "segment_num": 1,
-            "text": "E13X4.00B DOT IS9436"
+            "text": "E13X4.00B D0T IS9436"
           },
           {
             "segment_num": 2,
