@@ -502,8 +502,46 @@
         "logo_required": false
       },
       "ocr_type": "Full Text Match",
-      "expected_front_pattern": "E13X4.00B DOT IS9436 logo.png CM/L-9512455524",
-      "expected_rear_pattern": "LP1123"
+      "expected_front_pattern": "E13X4.00B DOT IS9436 logo.png CM/L-9512455524 YY MM AA WCWLB",
+      "expected_rear_pattern": "LP1123 / LP2113"
+    },
+    {
+      "id": "LP2113",
+      "wheel_code": "LP2113",
+      "customer": "MSIL",
+      "active": true,
+      "logo": "IST",
+      "logo_required": true,
+      "logo_side": "front",
+      "front_marking": {
+        "full_text": "E13X4.00B DOT IS9436 logo.png CM/L-9512455524 YY MM AA WCWLB",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "E13X4.00B DOT IS9436"
+          },
+          {
+            "segment_num": 2,
+            "text": "CM/L-9512455524 YY MM AA WCWLB"
+          }
+        ],
+        "distance_spec": "48±1 mm",
+        "logo_required": true
+      },
+      "rear_marking": {
+        "full_text": "LP2113 / LP1123",
+        "segments": [
+          {
+            "segment_num": 1,
+            "text": "LP2113 / LP1123"
+          }
+        ],
+        "distance_spec": "48±1 mm",
+        "logo_required": false
+      },
+      "ocr_type": "Full Text Match",
+      "expected_front_pattern": "E13X4.00B DOT IS9436 logo.png CM/L-9512455524 YY MM AA WCWLB",
+      "expected_rear_pattern": "LP2113 / LP1123"
     },
     {
       "id": "LP2109",

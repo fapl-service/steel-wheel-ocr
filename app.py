@@ -58,7 +58,7 @@ os.makedirs(PROCESSED_DIR, exist_ok=True)
 # -----------------------------
 app = FastAPI(
     title="Steel Wheel OCR Verification System",
-    description="Full Web GUI for OpenVINO interactive multi-ROI selection and OCR verification.",
+    description="Full Web GUI for interactive multi-ROI selection and OCR verification.",
     version="3.0.0",
 )
 
@@ -110,9 +110,14 @@ class OpenVINOOCRModel:
 
         xml_path = os.path.join(model_dir, "best.xml")
         core = ov.Core()
-        os.makedirs("model/cache", exist_ok=True)
-        core.set_property({"CACHE_DIR": "model/cache"})
-        self.compiled = core.compile_model(xml_path, device)
+        try:
+            os.makedirs("model/cache", exist_ok=True)
+            core.set_property({"CACHE_DIR": "model/cache"})
+            self.compiled = core.compile_model(xml_path, device)
+        except Exception:
+            # Fallback without cache if directory is locked by another process
+            core = ov.Core()
+            self.compiled = core.compile_model(xml_path, device)
         self.output_layer = self.compiled.output(0)
 
     def predict(self, img_bgr: np.ndarray, conf_thresh: float = 0.15) -> List[Dict[str, Any]]:
@@ -617,19 +622,118 @@ def api_delete_template(template_id: str):
     return {"success": True, "message": f"Template '{template_id}' deleted"}
 
 
+def resolve_dynamic_tokens(text: str, dynamic_params: Optional[Dict[str, Any]] = None) -> str:
+    """
+    Resolves dynamic tokens (YY, MM, AA, WCWLB) in marking text based on parameters or local date.
+    - YY: 2-digit Year (e.g. '26')
+    - MM: 2-digit Month (e.g. '08', '10')
+    - AA: Batch and Shift (e.g. 'B A')
+    - WCWLB: Fixed company code
+    """
+    if not text:
+        return ""
+    params = dynamic_params or {}
+    cur_year = time.strftime("%y")
+    cur_month = time.strftime("%m")
+    
+    # Auto shift based on current hour
+    hour = int(time.strftime("%H"))
+    auto_shift = "A" if 6 <= hour < 14 else ("B" if 14 <= hour < 22 else "C")
+    
+    year_raw = str(params.get("year") or "").strip()
+    month_raw = str(params.get("month") or "").strip()
+    batch_raw = str(params.get("batch") or "B").strip()
+    shift_raw = str(params.get("shift") or "A").strip()
+    suffix = str(params.get("suffix") or "WCWLB").strip()
+
+    # Parse years (default to current year if empty)
+    if not year_raw or year_raw.upper() in ("*", "ANY", "AUTO"):
+        years = [cur_year]
+    else:
+        years = [y.strip() for y in re.split(r'[,/|\s]+', year_raw) if y.strip()]
+        if not years:
+            years = [cur_year]
+
+    # Parse months (default to current month if empty)
+    if not month_raw or month_raw.upper() in ("*", "ANY", "AUTO"):
+        months = [cur_month]
+    else:
+        months = [m.strip().zfill(2) for m in re.split(r'[,/|\s]+', month_raw) if m.strip()]
+        if not months:
+            months = [cur_month]
+
+    # Parse batches (can be single "B", multiple "A, B", or "ANY" / "*")
+    if not batch_raw or batch_raw.upper() in ("*", "ANY", "ALL"):
+        batches = ["A", "B", "C", "D", "E"]
+    else:
+        batches = [b.strip().upper() for b in re.split(r'[,/|\s]+', batch_raw) if b.strip()]
+        if not batches:
+            batches = ["B"]
+
+    # Parse shifts (can be single "A", multiple "A, B", "AUTO", or "ANY" / "*")
+    if shift_raw.upper() == "AUTO":
+        shifts = [auto_shift]
+    elif shift_raw.upper() in ("*", "ANY", "ALL"):
+        shifts = ["A", "B", "C"]
+    else:
+        shifts = [s.strip().upper() for s in re.split(r'[,/|\s]+', shift_raw) if s.strip()]
+        if not shifts:
+            shifts = ["A"]
+
+    def resolve_single(t, y, m, b, s):
+        res = t
+        res = re.sub(r'\bYYMM\b', f"{y}{m}", res, flags=re.IGNORECASE)
+        res = re.sub(r'\bYY\b', y, res, flags=re.IGNORECASE)
+        res = re.sub(r'\bMM\b', m, res, flags=re.IGNORECASE)
+        res = re.sub(r'\bAA\b', f"{b} {s}", res, flags=re.IGNORECASE)
+        if suffix:
+            res = re.sub(r'\bWCWL\s*B\b|\bWCWLB\b', suffix, res, flags=re.IGNORECASE)
+        if params.get("append_dynamic") and suffix not in res.upper() and f"{y}{m}" not in res and f"{y} {m}" not in res:
+            res = f"{res.strip()} {y} {m} {b} {s} {suffix}".strip()
+        return res
+
+    variants = []
+    seen = set()
+    for y in years:
+        for m in months:
+            for b in batches:
+                for s in shifts:
+                    var = resolve_single(text, y, m, b, s)
+                    if var not in seen:
+                        seen.add(var)
+                        variants.append(var)
+
+    return " | ".join(variants)
+
+
+@app.post("/api/resolve_pattern")
+async def api_resolve_pattern(request: Request):
+    """Utility endpoint to preview resolved dynamic tokens pattern."""
+    try:
+        body = await request.json()
+        pattern = body.get("pattern", "")
+        dynamic_params = body.get("dynamic_params", {})
+        resolved = resolve_dynamic_tokens(pattern, dynamic_params)
+        return {"success": True, "resolved_pattern": resolved}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
 @app.post("/api/validate_ocr")
 async def api_validate_ocr(request: Request):
     """
     Validates OCR results against a wheel template.
     Compares expected OCR text with detected OCR text using space-insensitive sequence matching.
-    Evaluates individual ROIs as well as combined text to support multi-ROI setups.
+    Evaluates individual ROIs as well as combined text to support multi-ROI and multi-shot setups.
+    Dynamically resolves tokens (YY, MM, AA, WCWLB) based on parameters or local system time.
     Returns OK if match percentage >= 70% or exact match, NG otherwise.
     """
     try:
         body = await request.json()
         template_id = body.get("template_id", "")
         side = body.get("side", "front")  # "front" or "rear"
-        ocr_texts = body.get("ocr_texts", [])  # List of detected texts from each ROI
+        ocr_texts = body.get("ocr_texts", [])  # List of detected texts from each ROI / shot
+        dynamic_params = body.get("dynamic_params", {})  # Dynamic date, month, batch, shift, suffix
         
         if not template_id:
             raise HTTPException(status_code=400, detail="template_id is required")
@@ -664,29 +768,80 @@ async def api_validate_ocr(request: Request):
                 "logo": ""
             }
         
-        # Normalize text: strip all whitespace, uppercase, remove logo references
+        # Normalize text: strip all whitespace, uppercase, remove logo references, fix common OCR confusions
         def normalize_text(text):
             if not text:
                 return ""
             text = text.upper()
             text = text.replace("LOGO.PNG", "").replace("LOGO", "")
+            # Common industrial stamping OCR confusions (e.g. D0T -> DOT)
+            text = re.sub(r'D0T', 'DOT', text)
             text = re.sub(r'\s+', '', text)
             return text
         
         target_expected = expected_pattern if expected_pattern else expected_full
-        norm_expected = normalize_text(target_expected)
-        
-        # Build list of candidate texts: each individual ROI and combined
+
+        # Resolve dynamic tokens (Year, Month, Batch, Shift, Code) for front marking
+        if side == "front":
+            target_expected = resolve_dynamic_tokens(target_expected, dynamic_params)
+            expected_full = resolve_dynamic_tokens(expected_full, dynamic_params)
+
+        # Support alternative expected patterns (e.g., "LP2113 / LP1123" or "A | B")
+        # Split on pipe or on slash with surrounding spaces to avoid splitting "CM/L" or "5 1/2"
+        expected_alternatives = [opt.strip() for opt in re.split(r'\s*\|\s*|\s+/\s+', target_expected) if opt.strip()]
+        if not expected_alternatives:
+            expected_alternatives = [target_expected]
+
+        # Extract atomic units from all detected texts across all shots/ROIs
+        atomic_units = []
+        for t in ocr_texts:
+            if not t:
+                continue
+            raw = t.strip()
+            if raw and raw not in atomic_units:
+                atomic_units.append(raw)
+            # If a shot combined multiple tokens (e.g. "E13X... LP1123"), isolate individual space-separated words
+            sub_words = [w.strip() for w in re.split(r'\s+', raw) if w.strip()]
+            if len(sub_words) > 1:
+                for w in sub_words:
+                    if len(w) >= 3 and w not in atomic_units:
+                        atomic_units.append(w)
+
+        # Build permutations of candidates (single ROI, pairs, triples, and joined)
         candidates = []
-        for idx, t in enumerate(ocr_texts):
-            raw = t.strip() if t else ""
-            if raw:
-                candidates.append({"text": raw, "source": f"ROI {idx + 1}"})
-        
-        combined_text = " ".join(ocr_texts).strip()
-        if combined_text and len(ocr_texts) > 1:
-            candidates.append({"text": combined_text, "source": "Combined"})
-            
+        seen_norm_cand = set()
+
+        def add_candidate(text, source):
+            if not text:
+                return
+            n = normalize_text(text)
+            if n and n not in seen_norm_cand:
+                seen_norm_cand.add(n)
+                candidates.append({"text": text.strip(), "source": source})
+
+        # 1. Singles
+        for idx, u in enumerate(atomic_units):
+            add_candidate(u, f"ROI {idx + 1}")
+
+        # 2. Pairs (Permutations: u_i + u_j)
+        for i in range(len(atomic_units)):
+            for j in range(len(atomic_units)):
+                if i != j:
+                    add_candidate(f"{atomic_units[i]} {atomic_units[j]}", "Combined Pair")
+
+        # 3. Triples (Permutations: u_i + u_j + u_k) if reasonable count
+        if len(atomic_units) >= 3 and len(atomic_units) <= 7:
+            for i in range(len(atomic_units)):
+                for j in range(len(atomic_units)):
+                    for k in range(len(atomic_units)):
+                        if len({i, j, k}) == 3:
+                            add_candidate(f"{atomic_units[i]} {atomic_units[j]} {atomic_units[k]}", "Combined Triple")
+
+        # 4. All original ocr_texts joined in sequence
+        full_joined = " ".join([t.strip() for t in ocr_texts if t and t.strip()]).strip()
+        if full_joined:
+            add_candidate(full_joined, "All Combined")
+
         if not candidates:
             return {
                 "success": True,
@@ -696,56 +851,57 @@ async def api_validate_ocr(request: Request):
                 "detected_text": "(no text detected)",
                 "match_percentage": 0,
                 "matched_chars": 0,
-                "total_chars": len(norm_expected),
+                "total_chars": len(normalize_text(expected_alternatives[0])),
                 "template_id": template_id,
                 "side": side,
                 "logo_required": template.get("logo_required", False),
                 "logo": template.get("logo", "")
             }
-        
-        # Evaluate each candidate against norm_expected using SequenceMatcher
+
+        # Evaluate candidates against each expected alternative to find global best match
         best_score = -1.0
         best_matched_chars = 0
-        best_total_chars = max(len(norm_expected), 1)
+        best_total_chars = max(len(normalize_text(expected_alternatives[0])), 1)
         best_detected_text = candidates[0]["text"]
-        
-        for cand in candidates:
-            norm_cand = normalize_text(cand["text"])
-            if not norm_cand:
-                continue
-            
-            len_exp = len(norm_expected)
-            len_cand = len(norm_cand)
+        best_expected_target = expected_alternatives[0]
 
-            if norm_expected == norm_cand:
-                score = 1000.0  # Exact match
-                matched_chars = len_exp
-            elif norm_expected in norm_cand and len_cand <= len_exp + 2:
-                score = 900.0
-                matched_chars = len_exp
-            else:
-                sm = difflib.SequenceMatcher(None, norm_expected, norm_cand)
-                matched_chars = sum(block.size for block in sm.get_matching_blocks())
-                
-                # SequenceMatcher similarity ratio (0.0 - 1.0)
-                sim_ratio = sm.ratio()
-                
-                # Length similarity penalty: strongly penalize candidates that are far longer than expected
-                # (prevents combined 35-char Front+Rear strings from winning over a 6-char Rear ROI)
-                len_penalty = min(len_exp, len_cand) / max(len_exp, len_cand)
-                
-                # Small bonus for targeted individual ROI over artificial combined text
-                source_bonus = 1.08 if cand.get("source", "").startswith("ROI") else 1.0
-                
-                # Score combines character similarity, length match, and source preference
-                score = (sim_ratio * 0.7 + len_penalty * 0.3) * 100.0 * source_bonus
-            
-            if score > best_score:
-                best_score = score
-                best_matched_chars = matched_chars
-                best_total_chars = len(norm_expected)
-                best_detected_text = cand["text"]
-                
+        for exp_alt in expected_alternatives:
+            norm_expected = normalize_text(exp_alt)
+            if not norm_expected:
+                continue
+            len_exp = len(norm_expected)
+
+            for cand in candidates:
+                norm_cand = normalize_text(cand["text"])
+                if not norm_cand:
+                    continue
+                len_cand = len(norm_cand)
+
+                if norm_expected == norm_cand:
+                    score = 1000.0  # 100% exact match
+                    matched_chars = len_exp
+                elif norm_expected in norm_cand:
+                    # Expected pattern is cleanly contained within detected text
+                    len_diff = len_cand - len_exp
+                    score = 950.0 - min(50.0, len_diff * 2.0)
+                    matched_chars = len_exp
+                else:
+                    sm = difflib.SequenceMatcher(None, norm_expected, norm_cand)
+                    matched_chars = sum(block.size for block in sm.get_matching_blocks())
+                    sim_ratio = sm.ratio()
+                    len_penalty = min(len_exp, len_cand) / max(len_exp, len_cand)
+                    source_bonus = 1.05 if cand.get("source", "").startswith("ROI") else 1.0
+                    score = (sim_ratio * 0.75 + len_penalty * 0.25) * 100.0 * source_bonus
+
+                if score > best_score:
+                    best_score = score
+                    best_matched_chars = matched_chars
+                    best_total_chars = len_exp
+                    best_detected_text = cand["text"]
+                    best_expected_target = exp_alt
+
+        norm_best_exp = normalize_text(best_expected_target)
+
         # Determine if logo is required for this specific side
         logo_side = template.get("logo_side")
         if not logo_side:
@@ -756,15 +912,20 @@ async def api_validate_ocr(request: Request):
         else:
             side_logo_required = logo_side in ("rear", "both") or template.get("rear_marking", {}).get("logo_required", False)
 
-        # Check if logo was detected in this candidate text
-        has_detected_logo = "LOGO.PNG" in best_detected_text.upper() or "LOGO" in best_detected_text.upper()
+        # Check if logo was detected in best text or any ROI across the shots
+        has_detected_logo = (
+            "LOGO.PNG" in best_detected_text.upper() or
+            "LOGO" in best_detected_text.upper() or
+            any("LOGO.PNG" in (t or "").upper() or "LOGO" in (t or "").upper() for t in ocr_texts)
+        )
         is_logo_ok = (not side_logo_required) or has_detected_logo
 
         # Strict character verification:
-        # Expected and detected must be 100% exact match (best_score >= 900 or norm_expected == norm_cand)
+        # Match is OK if 100% exact or contains expected pattern with >= 900 score
         is_text_exact = (
             best_score >= 900.0 or
-            norm_expected == normalize_text(best_detected_text)
+            norm_best_exp == normalize_text(best_detected_text) or
+            norm_best_exp in normalize_text(best_detected_text)
         )
 
         display_match_pct = round(min(100.0, (best_matched_chars / max(best_total_chars, 1)) * 100.0), 1)
@@ -779,12 +940,19 @@ async def api_validate_ocr(request: Request):
             judgment = "NG"
             message = "Logo Missing"
 
+        # Extract matched tokens if present in winning expected target
+        dyn_match = re.search(r'(\d{2})\s+(\d{2})\s+([A-Z])\s+([A-Z])\s+WCWLB', best_expected_target)
+        matched_year = dyn_match.group(1) if dyn_match else (dynamic_params.get("year") or time.strftime("%y"))
+        matched_month = dyn_match.group(2) if dyn_match else (dynamic_params.get("month") or time.strftime("%m"))
+        matched_batch = dyn_match.group(3) if dyn_match else (dynamic_params.get("batch") or "B")
+        matched_shift = dyn_match.group(4) if dyn_match else (dynamic_params.get("shift") or "A")
+
         return {
             "success": True,
             "judgment": judgment,
             "message": message,
             "expected_text": expected_full,
-            "expected_pattern": target_expected,
+            "expected_pattern": best_expected_target,
             "detected_text": best_detected_text,
             "match_percentage": display_match_pct,
             "matched_chars": best_matched_chars,
@@ -793,7 +961,14 @@ async def api_validate_ocr(request: Request):
             "side": side,
             "logo_required": side_logo_required,
             "logo": template.get("logo", "") if side_logo_required else "",
-            "logo_detected": has_detected_logo
+            "logo_detected": has_detected_logo,
+            "resolved_dynamic": {
+                "year": matched_year,
+                "month": matched_month,
+                "batch": matched_batch,
+                "shift": matched_shift,
+                "suffix": dynamic_params.get("suffix", "WCWLB")
+            }
         }
     except Exception as e:
         tb = traceback.format_exc()

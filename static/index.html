@@ -28,7 +28,7 @@
       </div>
       <div>
         <h1 class="brand-title">Steel Wheel OCR Verification System</h1>
-        <div class="brand-subtitle">OpenVINO Multi-ROI OCR Verification</div>
+        <div class="brand-subtitle">Multi-ROI OCR Verification</div>
       </div>
     </div>
 
@@ -125,6 +125,181 @@
                   style="flex: 1;">Rear Only</button>
               </div>
             </div>
+
+            <!-- Capture Mode: Single Shot or 2-Shot (Multi-Part Front) -->
+            <div id="inspect-mode-container" class="form-group" style="margin-top: 10px; display: none;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                <label class="toolbar-label"
+                  style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin: 0;">
+                  Capture Mode
+                </label>
+                <span id="badge-multi-segment" class="badge-pill"
+                  style="display: none; font-size: 0.7rem; background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); padding: 1px 6px; border-radius: 4px;">
+                  Multi-Segment Wheel
+                </span>
+              </div>
+              <div class="mode-toggle-group" id="inspect-mode-toggle" style="display: flex; width: 100%;">
+                <button type="button" class="mode-toggle-btn" id="btn-mode-single" onclick="setInspectionMode('single')"
+                  style="flex: 1;">📷 1-Shot</button>
+                <button type="button" class="mode-toggle-btn active" id="btn-mode-two-shot"
+                  onclick="setInspectionMode('two_shot')" style="flex: 1;">📸📸 2-Shot Mode</button>
+              </div>
+            </div>
+
+            <!-- 2-Shot Stepper Bar (Active when 2-Shot mode is on) -->
+            <div id="two-shot-stepper" class="two-shot-stepper" style="display: none; margin-top: 10px;">
+              <div class="shot-tabs-container" style="display: flex; gap: 8px;">
+                <button type="button" class="shot-tab active" id="tab-shot-1" onclick="switchActiveShot(1)"
+                  style="flex: 1;">
+                  <div class="shot-tab-header">
+                    <span class="shot-badge">Shot 1</span>
+                    <span class="shot-status-dot" id="dot-shot-1"></span>
+                  </div>
+                  <div class="shot-name" id="tab-name-shot-1">Image 1</div>
+                  <div class="shot-text-preview" id="summary-shot-1">Awaiting capture / upload...</div>
+                </button>
+                <button type="button" class="shot-tab" id="tab-shot-2" onclick="switchActiveShot(2)" style="flex: 1;">
+                  <div class="shot-tab-header">
+                    <span class="shot-badge">Shot 2</span>
+                    <span class="shot-status-dot" id="dot-shot-2"></span>
+                  </div>
+                  <div class="shot-name" id="tab-name-shot-2">Image 2</div>
+                  <div class="shot-text-preview" id="summary-shot-2">Awaiting capture / upload...</div>
+                </button>
+              </div>
+
+              <div class="two-shot-guide" id="shot-guide-banner"
+                style="margin-top: 8px; font-size: 0.78rem; padding: 6px 10px; background: rgba(59, 130, 246, 0.12); border-left: 3px solid #3b82f6; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
+                <span id="shot-guide-text">👉 Active: <strong>Shot 1 (Image 1)</strong></span>
+                <button type="button" class="btn btn-xs btn-outline" onclick="resetTwoShots()" title="Clear both shots"
+                  style="padding: 2px 6px; font-size: 0.7rem;">
+                  🔄 Reset Shots
+                </button>
+              </div>
+
+              <!-- Dynamic ROIs Pool summary bar across all shots -->
+              <div id="shot-rois-pool-summary"
+                style="display: none; margin-top: 8px; font-size: 0.75rem; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 6px; padding: 7px 10px;">
+                <div
+                  style="display: flex; justify-content: space-between; align-items: center; font-weight: 600; color: #38bdf8; margin-bottom: 4px;">
+                  <span>🎯 Multi-Image ROI Pool</span>
+                  <span id="shot-pool-count" class="badge-pill"
+                    style="font-size: 0.68rem; background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 1px 6px; border-radius: 4px;">0
+                    ROIs</span>
+                </div>
+                <div id="shot-pool-details" style="font-size: 0.72rem; color: var(--text-secondary); line-height: 1.4;">
+                </div>
+              </div>
+            </div>
+
+            <!-- Dynamic Tokens (Date & Shift) Control Card -->
+            <div id="dynamic-tokens-card" class="dynamic-tokens-card"
+              style="margin-top: 10px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px;">
+              <div class="dynamic-tokens-header" onclick="toggleDynamicTokensPanel()"
+                style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
+                <div
+                  style="display: flex; align-items: center; gap: 6px; font-size: 0.82rem; font-weight: 600; color: var(--text-primary);">
+                  <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="16" y1="2" x2="16" y2="6"></line>
+                    <line x1="8" y1="2" x2="8" y2="6"></line>
+                    <line x1="3" y1="10" x2="21" y2="10"></line>
+                  </svg>
+                  <span>Dynamic Tokens (Date &amp; Shift)</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <button type="button" class="btn btn-xs btn-outline"
+                    onclick="event.stopPropagation(); resetToCurrentDateTokens()"
+                    title="Reset to Current System Year &amp; Month" style="padding: 1px 6px; font-size: 0.68rem;">↺
+                    Current Date</button>
+                  <span id="dynamic-toggle-icon"
+                    style="font-size: 0.75rem; color: var(--text-muted); transition: transform 0.2s;">▲</span>
+                </div>
+              </div>
+
+              <div id="dynamic-tokens-body" style="display: block; margin-top: 8px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 6px;">
+                  <div>
+                    <label
+                      style="font-size: 0.72rem; color: var(--text-muted); display: flex; justify-content: space-between; margin-bottom: 3px;">
+                      <span>Year (YY)</span>
+                      <span id="dt-year-badge" style="font-size: 0.62rem; color: #38bdf8;">Auto</span>
+                    </label>
+                    <input type="text" id="dt-year" class="form-input font-mono" maxlength="2" placeholder="YY"
+                      oninput="onDynamicTokensManualInput(this)"
+                      style="padding: 4px 6px; font-size: 0.82rem; text-align: center;">
+                  </div>
+                  <div>
+                    <label
+                      style="font-size: 0.72rem; color: var(--text-muted); display: flex; justify-content: space-between; margin-bottom: 3px;">
+                      <span>Month (MM)</span>
+                      <span id="dt-month-badge" style="font-size: 0.62rem; color: #38bdf8;">Auto</span>
+                    </label>
+                    <input type="text" id="dt-month" class="form-input font-mono" maxlength="2" placeholder="MM"
+                      oninput="onDynamicTokensManualInput(this)"
+                      style="padding: 4px 6px; font-size: 0.82rem; text-align: center;">
+                  </div>
+                  <div>
+                    <label
+                      style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 3px;">Batch</label>
+                    <input type="text" id="dt-batch" class="form-input font-mono" value="*" placeholder="B or *"
+                      list="dt-batch-options" oninput="onDynamicTokensChange()"
+                      style="padding: 4px 6px; font-size: 0.82rem; text-align: center;">
+                    <datalist id="dt-batch-options">
+                      <option value="*">* Any Batch (Auto-Match / Default)</option>
+                      <option value="B">Batch B (Standard)</option>
+                      <option value="A">Batch A</option>
+                      <option value="C">Batch C</option>
+                      <option value="D">Batch D</option>
+                    </datalist>
+                  </div>
+                  <div>
+                    <label
+                      style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 3px;">Shift</label>
+                    <select id="dt-shift" class="form-input font-mono" onchange="onDynamicTokensChange()"
+                      style="padding: 4px 6px; font-size: 0.82rem; text-align: center;">
+                      <option value="ANY" selected>* Any (A/B/C) - Default</option>
+                      <option value="AUTO">Auto (Time)</option>
+                      <option value="A">Shift A</option>
+                      <option value="B">Shift B</option>
+                      <option value="C">Shift C</option>
+                    </select>
+                  </div>
+                </div>
+
+                <!-- Quick Preset Selector for Multiple Batches / Shifts -->
+                <div
+                  style="display: flex; gap: 4px; margin-top: 6px; font-size: 0.7rem; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+                  <span style="color: var(--text-muted); font-size: 0.68rem;">Quick Match:</span>
+                  <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                    <button type="button" class="btn btn-xs btn-outline" id="btn-preset-any-both" onclick="setDynamicTokensPreset('any_both')"
+                      style="padding: 1px 6px; font-size: 0.66rem; background: rgba(56, 189, 248, 0.15); border-color: #38bdf8; color: #38bdf8; font-weight: 700;">★ * Any Batch &amp; Shift (Default)</button>
+                    <button type="button" class="btn btn-xs btn-outline" onclick="setDynamicTokensPreset('current')"
+                      style="padding: 1px 5px; font-size: 0.66rem;">Live Date + A</button>
+                    <button type="button" class="btn btn-xs btn-outline" onclick="setDynamicTokensPreset('auto_shift')"
+                      style="padding: 1px 5px; font-size: 0.66rem;">Auto Shift (Clock)</button>
+                    <button type="button" class="btn btn-xs btn-outline" onclick="setDynamicTokensPreset('any_shift')"
+                      style="padding: 1px 5px; font-size: 0.66rem;">* Any Shift</button>
+                  </div>
+                </div>
+
+                <div class="dynamic-preview-box"
+                  style="margin-top: 8px; font-size: 0.76rem; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: var(--text-muted);">Dynamic Suffix:</span>
+                    <span id="dt-preview-suffix" class="font-mono text-ok" style="font-weight: 700; color: #10b981;">26
+                      08 B A WCWLB</span>
+                  </div>
+                  <div
+                    style="margin-top: 4px; display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed var(--border-color); padding-top: 4px;">
+                    <span style="color: var(--text-muted);">Expected Pattern:</span>
+                    <span id="dt-preview-full" class="font-mono"
+                      style="font-size: 0.72rem; color: #38bdf8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 175px;"
+                      title=""></span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div class="webcam-container">
@@ -141,21 +316,36 @@
                   <circle cx="12" cy="12" r="10"></circle>
                   <circle cx="12" cy="12" r="3"></circle>
                 </svg>
-                Capture Snapshot
+                <span id="capture-btn-text">Capture Snapshot</span>
               </button>
             </div>
           </div>
 
-          <!-- Phone Camera Direct Shutter (Mobile Internal Camera) -->
-          <div style="margin-top: 10px; margin-bottom: 6px;">
-            <input type="file" id="phone-camera-input" accept="image/*" capture="environment" style="display: none;" onchange="handlePhoneCameraCapture(event)">
-            <button type="button" class="btn btn-primary" id="btn-phone-cam" onclick="document.getElementById('phone-camera-input').click()"
-              style="width: 100%; justify-content: center; gap: 8px; background: linear-gradient(135deg, #0284c7, #2563eb);">
-              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <!-- Phone Camera Direct Shutter & File Upload -->
+          <div style="margin-top: 10px; margin-bottom: 6px; display: flex; gap: 8px;">
+            <input type="file" id="phone-camera-input" accept="image/*" capture="environment" style="display: none;"
+              onchange="handlePhoneCameraCapture(event)">
+            <button type="button" class="btn btn-primary" id="btn-phone-cam"
+              onclick="document.getElementById('phone-camera-input').click()"
+              style="flex: 1; justify-content: center; gap: 6px; background: linear-gradient(135deg, #0284c7, #2563eb); font-size: 0.84rem;">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
                 <circle cx="12" cy="13" r="4"></circle>
               </svg>
-              <span>📱 Snap with Phone Camera</span>
+              <span id="btn-phone-cam-text">📱 Snap Mobile</span>
+            </button>
+
+            <input type="file" id="file-upload-input" accept="image/*" style="display: none;"
+              onchange="handleFileUpload(event)">
+            <button type="button" class="btn btn-outline" id="btn-file-upload"
+              onclick="document.getElementById('file-upload-input').click()"
+              style="flex: 1; justify-content: center; gap: 6px; font-size: 0.84rem;">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              <span id="btn-upload-text">📁 Upload Image</span>
             </button>
           </div>
 
@@ -206,7 +396,27 @@
 
         <!-- Studio Toolbar -->
         <div class="studio-toolbar">
+          <div class="toolbar-group" id="canvas-shot-tabs"
+            style="display: none; margin-right: 12px; background: rgba(0,0,0,0.25); padding: 2px; border-radius: 6px; border: 1px solid var(--border-color);">
+            <button type="button" class="btn btn-xs active" id="btn-canvas-shot-1" onclick="switchActiveShot(1)"
+              style="font-weight: 600; padding: 4px 8px; font-size: 0.75rem;">
+              📸 Shot 1 View
+            </button>
+            <button type="button" class="btn btn-xs" id="btn-canvas-shot-2" onclick="switchActiveShot(2)"
+              style="font-weight: 600; padding: 4px 8px; font-size: 0.75rem;">
+              📸 Shot 2 View
+            </button>
+          </div>
+
           <div class="toolbar-group">
+            <button class="btn btn-outline" id="btn-toggle-draw" onclick="toggleDrawMode()" disabled
+              title="Tap to draw custom ROI box with finger or mouse">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path d="M12 20h9"></path>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+              </svg>
+              <span id="btn-toggle-draw-text">✏️ Draw ROI</span>
+            </button>
             <button class="btn btn-outline" id="btn-clear-rois" onclick="clearAllROIs()" disabled>
               <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <polyline points="3 6 5 6 21 6"></polyline>
@@ -293,7 +503,8 @@
               <polyline points="21 15 16 10 5 21"></polyline>
             </svg>
             <div style="font-weight: 600; font-size: 1.1rem;">No Image Loaded</div>
-            <div style="font-size: 0.85rem;">Capture a photo with your phone camera or webcam in Step 1 to select ROIs directly and run OCR.</div>
+            <div style="font-size: 0.85rem;">Capture a photo with your phone camera or webcam in Step 1 to select ROIs
+              directly and run OCR.</div>
           </div>
           <canvas id="roi-canvas" style="display: none;"></canvas>
         </div>
@@ -437,11 +648,23 @@
                 <!-- Dynamic segment fields rendered here -->
               </div>
               <div class="form-group">
-                <label class="form-label">Expected OCR Pattern (fixed portion for validation)</label>
+                <label class="form-label">Expected OCR Pattern (Validation Target)</label>
                 <input type="text" id="tf-front-pattern" class="form-input font-mono"
-                  placeholder="E13X4.00B DOT IS9436 CM/L-9512455524" />
-                <div class="form-hint">Enter the fixed characters expected from OCR. Dynamic tokens (YYMM, AA, etc.) can
-                  be excluded.</div>
+                  placeholder="E13X4.00B DOT IS9436 logo.png CM/L-9512455524 YY MM AA WCWLB" />
+                <div style="display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap;">
+                  <button type="button" class="btn btn-xs btn-outline"
+                    onclick="appendTokenToInput('tf-front-pattern', 'logo.png')">+ logo.png</button>
+                  <button type="button" class="btn btn-xs btn-outline"
+                    onclick="appendTokenToInput('tf-front-pattern', 'YY')">+ YY (Year)</button>
+                  <button type="button" class="btn btn-xs btn-outline"
+                    onclick="appendTokenToInput('tf-front-pattern', 'MM')">+ MM (Month)</button>
+                  <button type="button" class="btn btn-xs btn-outline"
+                    onclick="appendTokenToInput('tf-front-pattern', 'AA')">+ AA (Batch/Shift)</button>
+                  <button type="button" class="btn btn-xs btn-outline"
+                    onclick="appendTokenToInput('tf-front-pattern', 'WCWLB')">+ WCWLB</button>
+                </div>
+                <div class="form-hint">Dynamic tokens (YY, MM, AA, WCWLB) automatically resolve at runtime (e.g. "26 08
+                  B A WCWLB").</div>
               </div>
             </div>
 

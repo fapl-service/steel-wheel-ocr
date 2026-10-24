@@ -13,6 +13,7 @@ const state = {
   naturalHeight: 0,
   rois: [],           // Array of { x1, y1, x2, y2 }
   selectedROIIndex: null, // Currently selected ROI for editing
+  drawMode: false,        // Explicit drawing mode (prevents accidental touch-scroll ROIs)
   activeInteraction: null, // 'draw' | 'move' | 'resize'
   activeHandle: null,      // Handle currently being dragged
   dragStart: null,
@@ -25,6 +26,56 @@ const state = {
   editingTemplateId: null,
   currentScreen: 'ocr-studio',
   lastOcrResults: null,
+  // Multi-Shot / 2-Shot State
+  inspectionMode: 'single', // 'single' | 'two_shot'
+  activeShot: 1,            // 1 | 2
+  shot1: {
+    imageBase64: null,
+    annotatedImageBase64: null,
+    naturalWidth: 0,
+    naturalHeight: 0,
+    rois: [],
+    results: null,
+    text: ''
+  },
+  shot2: {
+    imageBase64: null,
+    annotatedImageBase64: null,
+    naturalWidth: 0,
+    naturalHeight: 0,
+    rois: [],
+    results: null,
+    text: ''
+  },
+  // Dynamic Tokens State (Defaults align with: * Any Batch & Shift)
+  dynamicTokens: {
+    year: '26',
+    month: '10',
+    batch: '*',
+    shift: 'ANY',
+    suffix: 'WCWLB'
+  },
+  // Interactive Canvas Zoom & Pan Studio State
+  zoom: {
+    scale: 1.0,
+    panX: 0,
+    panY: 0,
+    minScale: 0.5,
+    maxScale: 5.0,
+    panMode: false,
+    isPanning: false,
+    panStartX: 0,
+    panStartY: 0,
+    initialPanX: 0,
+    initialPanY: 0,
+    isPinching: false,
+    initialPinchDistance: 0,
+    initialPinchScale: 1.0,
+    pinchStartPanX: 0,
+    pinchStartPanY: 0,
+    pinchStartMidX: 0,
+    pinchStartMidY: 0
+  },
   // Approval Screen State
   approvals: [],
   approvalsFilter: 'pending',
@@ -39,6 +90,8 @@ const elements = {
   webcamVideo: document.getElementById('webcam-video'),
   startCamBtn: document.getElementById('start-cam-btn'),
   captureBtn: document.getElementById('capture-btn'),
+  btnToggleDraw: document.getElementById('btn-toggle-draw'),
+  btnToggleDrawText: document.getElementById('btn-toggle-draw-text'),
   btnRunOCR: document.getElementById('btn-run-ocr'),
   btnClearROIs: document.getElementById('btn-clear-rois'),
   btnAutoDetect: document.getElementById('btn-auto-detect'),
@@ -63,10 +116,13 @@ let loadedActiveImage = new Image();
 // Initialization
 // -----------------------------------------------------------------------------
 window.addEventListener('DOMContentLoaded', () => {
+  initDynamicDateTokens();
   setupEventListeners();
-  initWebcamAuto();
+  // Default camera remains OFF on page load per user request
   loadTemplatesForDropdown();
   updatePendingApprovalsCount();
+  updateDynamicTokensPreview();
+  updateCaptureButtonLabels();
 });
 
 function setupEventListeners() {
@@ -77,25 +133,31 @@ function setupEventListeners() {
     });
   }
 
-  // Canvas Mouse & Touch Events for Multi-ROI Drawing and Editing
+  // Canvas Mouse & Touch Events for Multi-ROI Drawing, Editing, Zoom & Pan
+  if (elements.canvasContainer) {
+    elements.canvasContainer.addEventListener('wheel', onCanvasWheel, { passive: false });
+  }
+
   if (elements.canvas) {
     elements.canvas.addEventListener('mousedown', onCanvasMouseDown);
     elements.canvas.addEventListener('mousemove', onCanvasHoverMove);
     window.addEventListener('mousemove', onCanvasMouseMove);
     window.addEventListener('mouseup', onCanvasMouseUp);
+    elements.canvas.addEventListener('contextmenu', (e) => {
+      if (state.zoom.panMode || state.zoom.scale > 1.0) {
+        e.preventDefault();
+      }
+    });
 
-    // Touch Support
-    elements.canvas.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      onCanvasMouseDown(e.touches[0]);
-    }, { passive: false });
-    window.addEventListener('touchmove', (e) => {
-      if (state.activeInteraction) onCanvasMouseMove(e.touches[0]);
-    }, { passive: false });
-    window.addEventListener('touchend', (e) => {
-      if (state.activeInteraction) onCanvasMouseUp(e.changedTouches[0]);
-    }, { passive: false });
+    // Touch Support: 2-finger pinch & pan, 1-finger pan mode OR ROI selection/drawing
+    elements.canvas.addEventListener('touchstart', onCanvasTouchStart, { passive: false });
+    window.addEventListener('touchmove', onCanvasTouchMove, { passive: false });
+    window.addEventListener('touchend', onCanvasTouchEnd, { passive: false });
+    window.addEventListener('touchcancel', onCanvasTouchEnd, { passive: false });
   }
+
+  // Setup interactive Approval Zoom Modal listeners (wheel, drag, touch pinch)
+  setupModalZoomListeners();
 
   // Global Keyboard Controls for Selected ROI
   window.addEventListener('keydown', (e) => {
@@ -267,6 +329,47 @@ function handlePhoneCameraCapture(event) {
   event.target.value = '';
 }
 
+function handleFileUpload(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+
+  showToast('Loading uploaded photo...', 'info');
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const img = new Image();
+    img.onload = function() {
+      const MAX_DIM = 1280;
+      let w = img.naturalWidth || img.width;
+      let h = img.naturalHeight || img.height;
+
+      if (w > MAX_DIM || h > MAX_DIM) {
+        if (w > h) {
+          h = Math.round((h * MAX_DIM) / w);
+          w = MAX_DIM;
+        } else {
+          w = Math.round((w * MAX_DIM) / h);
+          h = MAX_DIM;
+        }
+      }
+
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = w;
+      tempCanvas.height = h;
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCtx.drawImage(img, 0, 0, w, h);
+
+      const optimizedB64 = tempCanvas.toDataURL('image/jpeg', 0.85);
+      setOriginalImage(optimizedB64);
+      const shotLabel = state.inspectionMode === 'two_shot' ? `Shot ${state.activeShot}` : 'Image';
+      showToast(`${shotLabel} loaded (${w}x${h})! Ready for OCR.`, 'success');
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+  event.target.value = '';
+}
+
 function setOriginalImage(base64Str) {
   state.originalImageBase64 = base64Str;
   state.activeImageBase64 = base64Str;
@@ -275,6 +378,17 @@ function setOriginalImage(base64Str) {
   state.lastOcrResults = null;
   updateROILegend();
 
+  // If in 2-Shot mode, store into active shot container
+  if (state.inspectionMode === 'two_shot') {
+    const current = state['shot' + state.activeShot];
+    current.imageBase64 = base64Str;
+    current.annotatedImageBase64 = null;
+    current.rois = [];
+    current.results = null;
+    current.text = '';
+    updateShotSummaryUI(state.activeShot, 'Captured (Click Run OCR)', false);
+  }
+
   // Hide judgment banner
   if (elements.judgmentBanner) elements.judgmentBanner.style.display = 'none';
 
@@ -282,6 +396,7 @@ function setOriginalImage(base64Str) {
   elements.btnRunOCR.disabled = false;
   elements.btnClearROIs.disabled = false;
   elements.btnAutoDetect.disabled = false;
+  if (elements.btnToggleDraw) elements.btnToggleDraw.disabled = false;
 
   // Load snapshot immediately into canvas for direct ROI selection
   loadWorkingImage(base64Str);
@@ -299,6 +414,11 @@ function loadWorkingImage(base64Str) {
 
     elements.canvasPlaceholder.style.display = 'none';
     elements.canvas.style.display = 'block';
+
+    // Show floating zoom & pan toolbar
+    const zoomTb = document.getElementById('canvas-zoom-toolbar');
+    if (zoomTb) zoomTb.style.display = 'flex';
+    resetCanvasZoom();
   };
   loadedActiveImage.src = base64Str;
 }
@@ -436,6 +556,171 @@ function redrawCanvas(currentPreviewRect = null) {
   }
 }
 
+// -----------------------------------------------------------------------------
+// Interactive Canvas Zoom & Pan Studio Controls
+// -----------------------------------------------------------------------------
+function applyCanvasZoom() {
+  if (!elements.canvas) return;
+  const z = state.zoom;
+  elements.canvas.style.transform = `translate(${z.panX}px, ${z.panY}px) scale(${z.scale})`;
+  elements.canvas.style.transformOrigin = 'center center';
+
+  const badge = document.getElementById('zoom-level-badge');
+  if (badge) {
+    badge.textContent = `${Math.round(z.scale * 100)}%`;
+    badge.title = `Current Zoom: ${Math.round(z.scale * 100)}% (Click to reset 100%)`;
+  }
+}
+
+function zoomCanvas(delta, centerPoint = null) {
+  if (!state.activeImageBase64) return;
+  const z = state.zoom;
+  const oldScale = z.scale;
+  let newScale = Math.max(z.minScale, Math.min(z.maxScale, oldScale + delta));
+  newScale = Math.round(newScale * 100) / 100;
+  if (Math.abs(newScale - oldScale) < 0.001) return;
+
+  if (centerPoint && elements.canvasContainer) {
+    const rect = elements.canvasContainer.getBoundingClientRect();
+    const cx = (centerPoint.clientX - rect.left) - rect.width / 2;
+    const cy = (centerPoint.clientY - rect.top) - rect.height / 2;
+    const ratio = newScale / oldScale;
+    z.panX = Math.round(cx - ratio * (cx - z.panX));
+    z.panY = Math.round(cy - ratio * (cy - z.panY));
+  }
+
+  z.scale = newScale;
+  applyCanvasZoom();
+}
+
+function resetCanvasZoom() {
+  state.zoom.scale = 1.0;
+  state.zoom.panX = 0;
+  state.zoom.panY = 0;
+  applyCanvasZoom();
+}
+
+function togglePanMode(force) {
+  state.zoom.panMode = typeof force === 'boolean' ? force : !state.zoom.panMode;
+  const btn = document.getElementById('btn-canvas-pan-mode');
+  if (btn) {
+    btn.classList.toggle('active', state.zoom.panMode);
+  }
+  if (elements.canvas) {
+    elements.canvas.classList.toggle('panning-active', state.zoom.panMode);
+    if (state.zoom.panMode) {
+      elements.canvas.style.cursor = 'grab';
+    } else {
+      elements.canvas.style.cursor = state.drawMode ? 'crosshair' : 'default';
+    }
+  }
+  if (state.zoom.panMode) {
+    showToast('✋ Pan Mode ON: Drag to move image. Toggle off to draw ROIs.', 'info');
+  } else {
+    showToast('ROI Selection Mode Active.', 'info');
+  }
+}
+
+function onCanvasWheel(e) {
+  if (!state.activeImageBase64) return;
+  e.preventDefault();
+  const delta = e.deltaY < 0 ? 0.2 : -0.2;
+  zoomCanvas(delta, { clientX: e.clientX, clientY: e.clientY });
+}
+
+function onCanvasTouchStart(e) {
+  if (!state.activeImageBase64) return;
+
+  if (e.touches.length === 2) {
+    // 2-Finger Pinch-to-Zoom & Pan
+    if (e.cancelable) e.preventDefault();
+    state.activeInteraction = null; // Cancel any active 1-finger draw/drag
+    state.zoom.isPinching = true;
+    state.zoom.isPanning = false;
+
+    const t1 = e.touches[0];
+    const t2 = e.touches[1];
+    state.zoom.initialPinchDistance = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+    state.zoom.initialPinchScale = state.zoom.scale;
+    state.zoom.pinchStartMidX = (t1.clientX + t2.clientX) / 2;
+    state.zoom.pinchStartMidY = (t1.clientY + t2.clientY) / 2;
+    state.zoom.pinchStartPanX = state.zoom.panX;
+    state.zoom.pinchStartPanY = state.zoom.panY;
+    return;
+  }
+
+  if (e.touches.length === 1) {
+    if (state.zoom.panMode) {
+      // 1-finger drag pan mode
+      if (e.cancelable) e.preventDefault();
+      state.zoom.isPanning = true;
+      state.zoom.panStartX = e.touches[0].clientX;
+      state.zoom.panStartY = e.touches[0].clientY;
+      state.zoom.initialPanX = state.zoom.panX;
+      state.zoom.initialPanY = state.zoom.panY;
+      return;
+    }
+
+    // 1-finger normal ROI mode (select, move, resize handle, or draw box)
+    const touch = e.touches[0];
+    const isInteractionStarted = onCanvasMouseDown(touch, true);
+    if (isInteractionStarted && e.cancelable) {
+      e.preventDefault();
+    }
+  }
+}
+
+function onCanvasTouchMove(e) {
+  if (state.zoom.isPinching && e.touches.length >= 2) {
+    if (e.cancelable) e.preventDefault();
+    const t1 = e.touches[0];
+    const t2 = e.touches[1];
+    const currentDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+    const factor = currentDist / (state.zoom.initialPinchDistance || 1);
+    let newScale = Math.max(state.zoom.minScale, Math.min(state.zoom.maxScale, state.zoom.initialPinchScale * factor));
+    state.zoom.scale = Math.round(newScale * 100) / 100;
+
+    const curMidX = (t1.clientX + t2.clientX) / 2;
+    const curMidY = (t1.clientY + t2.clientY) / 2;
+    state.zoom.panX = Math.round(state.zoom.pinchStartPanX + (curMidX - state.zoom.pinchStartMidX));
+    state.zoom.panY = Math.round(state.zoom.pinchStartPanY + (curMidY - state.zoom.pinchStartMidY));
+    applyCanvasZoom();
+    return;
+  }
+
+  if (state.zoom.isPanning && e.touches.length === 1) {
+    if (e.cancelable) e.preventDefault();
+    const dx = e.touches[0].clientX - state.zoom.panStartX;
+    const dy = e.touches[0].clientY - state.zoom.panStartY;
+    state.zoom.panX = Math.round(state.zoom.initialPanX + dx);
+    state.zoom.panY = Math.round(state.zoom.initialPanY + dy);
+    applyCanvasZoom();
+    return;
+  }
+
+  if (state.activeInteraction && e.touches && e.touches[0]) {
+    if (e.cancelable) e.preventDefault();
+    onCanvasMouseMove(e.touches[0]);
+  }
+}
+
+function onCanvasTouchEnd(e) {
+  if (state.zoom.isPinching) {
+    if (!e.touches || e.touches.length < 2) {
+      state.zoom.isPinching = false;
+    }
+  }
+  if (state.zoom.isPanning) {
+    if (!e.touches || e.touches.length === 0) {
+      state.zoom.isPanning = false;
+    }
+  }
+  if (state.activeInteraction) {
+    const touch = (e.changedTouches && e.changedTouches[0]) || (e.touches && e.touches[0]);
+    if (touch) onCanvasMouseUp(touch);
+  }
+}
+
 function getCanvasCoordinates(e) {
   const rect = elements.canvas.getBoundingClientRect();
   if (!rect || rect.width <= 0 || rect.height <= 0) return { x: 0, y: 0 };
@@ -443,8 +728,18 @@ function getCanvasCoordinates(e) {
   const scaleX = elements.canvas.width / rect.width;
   const scaleY = elements.canvas.height / rect.height;
 
-  const clientX = e.clientX ?? (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
-  const clientY = e.clientY ?? (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+  let clientX = 0;
+  let clientY = 0;
+  if (e.clientX !== undefined && e.clientX !== null) {
+    clientX = e.clientX;
+    clientY = e.clientY;
+  } else if (e.touches && e.touches[0]) {
+    clientX = e.touches[0].clientX;
+    clientY = e.touches[0].clientY;
+  } else if (e.changedTouches && e.changedTouches[0]) {
+    clientX = e.changedTouches[0].clientX;
+    clientY = e.changedTouches[0].clientY;
+  }
 
   const rawX = Math.round((clientX - rect.left) * scaleX);
   const rawY = Math.round((clientY - rect.top) * scaleY);
@@ -456,7 +751,11 @@ function getCanvasCoordinates(e) {
 }
 
 function onCanvasHoverMove(e) {
-  if (state.activeInteraction || !state.activeImageBase64) return;
+  if (state.zoom.isPanning || state.activeInteraction || !state.activeImageBase64) return;
+  if (state.zoom.panMode) {
+    elements.canvas.style.cursor = 'grab';
+    return;
+  }
   const pos = getCanvasCoordinates(e);
 
   // Check if over selected ROI handles or box
@@ -491,11 +790,55 @@ function onCanvasHoverMove(e) {
     }
   }
 
-  elements.canvas.style.cursor = 'crosshair';
+  elements.canvas.style.cursor = state.drawMode ? 'crosshair' : 'default';
 }
 
-function onCanvasMouseDown(e) {
+function toggleDrawMode(forceState) {
   if (!state.activeImageBase64) return;
+  state.drawMode = typeof forceState === 'boolean' ? forceState : !state.drawMode;
+  const btn = elements.btnToggleDraw;
+  const txt = elements.btnToggleDrawText;
+
+  if (state.drawMode) {
+    if (btn) {
+      btn.classList.add('active');
+      btn.classList.add('btn-primary');
+      btn.classList.remove('btn-outline');
+    }
+    if (txt) txt.textContent = '✏️ Drawing ON (Tap to Cancel)';
+    if (elements.canvas) {
+      elements.canvas.classList.add('drawing-active');
+      elements.canvas.style.cursor = 'crosshair';
+    }
+    showToast('Drawing Mode ON: Drag over markings on the image.', 'info');
+  } else {
+    if (btn) {
+      btn.classList.remove('active');
+      btn.classList.remove('btn-primary');
+      btn.classList.add('btn-outline');
+    }
+    if (txt) txt.textContent = '✏️ Draw ROI';
+    if (elements.canvas) {
+      elements.canvas.classList.remove('drawing-active');
+      elements.canvas.style.cursor = 'default';
+    }
+  }
+}
+
+function onCanvasMouseDown(e, isTouch = false) {
+  if (!state.activeImageBase64) return false;
+
+  // Middle-click, Right-click, or Pan-mode: drag to pan image
+  if (!isTouch && (state.zoom.panMode || e.button === 1 || e.button === 2)) {
+    state.zoom.isPanning = true;
+    state.zoom.panStartX = e.clientX;
+    state.zoom.panStartY = e.clientY;
+    state.zoom.initialPanX = state.zoom.panX;
+    state.zoom.initialPanY = state.zoom.panY;
+    if (elements.canvas) elements.canvas.style.cursor = 'grabbing';
+    return true;
+  }
+
   const pos = getCanvasCoordinates(e);
 
   // 1. If an ROI is selected, check its handles or interior
@@ -512,14 +855,14 @@ function onCanvasMouseDown(e) {
       state.activeHandle = handle;
       state.dragStart = pos;
       state.origROI = { x1: rx, y1: ry, x2: rx + rw, y2: ry + rh };
-      return;
+      return true;
     }
 
     if (isPointInsideRect(pos.x, pos.y, rx, ry, rw, rh)) {
       state.activeInteraction = 'move';
       state.dragStart = pos;
       state.origROI = { x1: rx, y1: ry, x2: rx + rw, y2: ry + rh };
-      return;
+      return true;
     }
   }
 
@@ -535,17 +878,42 @@ function onCanvasMouseDown(e) {
       state.activeInteraction = 'move';
       state.dragStart = pos;
       state.origROI = { x1: rx, y1: ry, x2: rx + rw, y2: ry + rh };
-      return;
+      return true;
     }
   }
 
-  // 3. Clicked empty space: deselect current ROI and start drawing a new ROI
+  // 3. Clicked empty space:
+  // On mobile touch devices: if NOT in drawMode, allow page scrolling! Do NOT create an accidental ROI!
+  if (isTouch && !state.drawMode) {
+    deselectROI();
+    return false;
+  }
+
+  // If on desktop mouse, but drawMode is not active: only draw if drawMode is on or user clicks and drags
+  if (!isTouch && !state.drawMode && state.rois.length > 0) {
+    // If ROIs already exist on desktop, clicking empty space deselects without immediately drawing
+    deselectROI();
+    return false;
+  }
+
   deselectROI();
   state.activeInteraction = 'draw';
   state.dragStart = pos;
+  return true;
 }
 
 function onCanvasMouseMove(e) {
+  if (state.zoom.isPanning) {
+    const cx = e.clientX ?? (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+    const cy = e.clientY ?? (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+    const dx = cx - state.zoom.panStartX;
+    const dy = cy - state.zoom.panStartY;
+    state.zoom.panX = Math.round(state.zoom.initialPanX + dx);
+    state.zoom.panY = Math.round(state.zoom.initialPanY + dy);
+    applyCanvasZoom();
+    return;
+  }
+
   if (!state.activeInteraction || !state.dragStart) return;
   const currentPos = getCanvasCoordinates(e);
 
@@ -633,6 +1001,14 @@ function onCanvasMouseMove(e) {
 }
 
 function onCanvasMouseUp(e) {
+  if (state.zoom.isPanning) {
+    state.zoom.isPanning = false;
+    if (elements.canvas) {
+      elements.canvas.style.cursor = state.zoom.panMode ? 'grab' : (state.drawMode ? 'crosshair' : 'default');
+    }
+    return;
+  }
+
   if (!state.activeInteraction) return;
 
   if (state.activeInteraction === 'draw' && state.dragStart) {
@@ -642,14 +1018,17 @@ function onCanvasMouseUp(e) {
     const x2 = Math.max(state.dragStart.x, endPos.x);
     const y2 = Math.max(state.dragStart.y, endPos.y);
 
-    // Minimum size threshold
-    const minW = Math.max(12, Math.round(elements.canvas.width * 0.008));
-    const minH = Math.max(8, Math.round(elements.canvas.height * 0.008));
+    // Minimum size threshold to discard accidental micro-taps/finger slips (min 28x20 px)
+    const minW = Math.max(28, Math.round(elements.canvas.width * 0.015));
+    const minH = Math.max(20, Math.round(elements.canvas.height * 0.015));
 
     if (Math.abs(x2 - x1) >= minW && Math.abs(y2 - y1) >= minH) {
       state.rois.push({ x1, y1, x2, y2 });
       selectROI(state.rois.length - 1);
       showToast(`Added ROI ${state.rois.length} (Selected for editing)`);
+      if (state.drawMode) {
+        toggleDrawMode(false); // Automatically return to safe scroll mode after drawing
+      }
     } else {
       redrawCanvas();
     }
@@ -838,6 +1217,7 @@ function deleteROI(index) {
 function clearAllROIs() {
   state.rois = [];
   state.selectedROIIndex = null;
+  toggleDrawMode(false);
   if (elements.roiEditBar) elements.roiEditBar.style.display = 'none';
   updateROILegend();
   redrawCanvas();
@@ -878,12 +1258,16 @@ function populateModelDropdown(templates) {
 function onWheelModelSelected() {
   const selected = elements.wheelModelSelect.value;
   const sideContainer = document.getElementById('inspect-side-container');
+  const modeContainer = document.getElementById('inspect-mode-container');
+  const multiBadge = document.getElementById('badge-multi-segment');
 
   if (!selected) {
     state.selectedTemplateId = null;
     state.selectedTemplate = null;
     if (elements.selectedTemplateInfo) elements.selectedTemplateInfo.style.display = 'none';
     if (sideContainer) sideContainer.style.display = 'none';
+    if (modeContainer) modeContainer.style.display = 'none';
+    setInspectionMode('single');
     return;
   }
 
@@ -891,12 +1275,24 @@ function onWheelModelSelected() {
   state.selectedTemplate = state.templates.find(t => t.id === selected);
 
   if (sideContainer) sideContainer.style.display = 'block';
+  if (modeContainer) modeContainer.style.display = 'block';
 
   if (state.selectedTemplate && elements.selectedTemplateInfo) {
     const t = state.selectedTemplate;
     const frontText = t.front_marking?.full_text || 'N/A';
     const rearText = t.rear_marking?.full_text || 'N/A';
     const logoSide = t.logo_side || (t.logo_required !== false ? 'front' : 'none');
+    const fSegs = t.front_marking?.segments || [];
+    const hasMultiSeg = fSegs.length > 1;
+
+    if (multiBadge) multiBadge.style.display = hasMultiSeg ? 'inline-block' : 'none';
+
+    // Auto-select 2-shot mode if wheel has multi-segments (e.g. LP2113)
+    if (hasMultiSeg) {
+      setInspectionMode('two_shot');
+    }
+
+    updateDynamicTokensPreview();
 
     let logoBadgeHtml = '';
     if (logoSide === 'front') {
@@ -920,6 +1316,435 @@ function onWheelModelSelected() {
     `;
     elements.selectedTemplateInfo.style.display = 'block';
     showToast(`Template loaded: ${t.wheel_code} (${t.customer})`);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Multi-Shot (2-Shot) & Dynamic Tokens Inspection Control
+// -----------------------------------------------------------------------------
+function setInspectionMode(mode) {
+  state.inspectionMode = mode;
+  document.getElementById('btn-mode-single')?.classList.toggle('active', mode === 'single');
+  document.getElementById('btn-mode-two-shot')?.classList.toggle('active', mode === 'two_shot');
+
+  const stepper = document.getElementById('two-shot-stepper');
+  if (stepper) stepper.style.display = mode === 'two_shot' ? 'block' : 'none';
+
+  const canvasTabs = document.getElementById('canvas-shot-tabs');
+  if (canvasTabs) canvasTabs.style.display = mode === 'two_shot' ? 'flex' : 'none';
+
+  updateCaptureButtonLabels();
+}
+
+function switchActiveShot(shotNum) {
+  // If moving from current shot, save its ROIs
+  const prevShot = state['shot' + state.activeShot];
+  if (prevShot) {
+    prevShot.rois = [...state.rois];
+  }
+
+  state.activeShot = shotNum;
+
+  // Toggle active tabs
+  document.getElementById('tab-shot-1')?.classList.toggle('active', shotNum === 1);
+  document.getElementById('tab-shot-2')?.classList.toggle('active', shotNum === 2);
+  document.getElementById('btn-canvas-shot-1')?.classList.toggle('active', shotNum === 1);
+  document.getElementById('btn-canvas-shot-2')?.classList.toggle('active', shotNum === 2);
+
+  updateCaptureButtonLabels();
+
+  // Load target shot image onto canvas
+  const targetShot = state['shot' + shotNum];
+  if (targetShot && (targetShot.annotatedImageBase64 || targetShot.imageBase64)) {
+    const imgToLoad = targetShot.annotatedImageBase64 || targetShot.imageBase64;
+    state.originalImageBase64 = targetShot.imageBase64;
+    state.activeImageBase64 = targetShot.imageBase64;
+    state.annotatedImageBase64 = targetShot.annotatedImageBase64;
+    state.rois = [...targetShot.rois];
+    elements.canvasPlaceholder.style.display = 'none';
+    elements.canvas.style.display = 'block';
+    loadWorkingImage(imgToLoad);
+    updateROILegend();
+    if (targetShot.results) {
+      renderResults(targetShot.results);
+    }
+  } else {
+    elements.canvasPlaceholder.style.display = 'flex';
+    elements.canvas.style.display = 'none';
+    state.originalImageBase64 = null;
+    state.activeImageBase64 = null;
+    state.annotatedImageBase64 = null;
+    state.rois = [];
+    updateROILegend();
+  }
+}
+
+function updateCaptureButtonLabels() {
+  const capText = document.getElementById('capture-btn-text');
+  const phoneText = document.getElementById('btn-phone-cam-text');
+  const uploadText = document.getElementById('btn-upload-text');
+  const guideText = document.getElementById('shot-guide-text');
+
+  if (state.inspectionMode === 'two_shot') {
+    const s = state.activeShot;
+    if (capText) capText.textContent = `Capture Image ${s}`;
+    if (phoneText) phoneText.textContent = `📱 Snap Image ${s}`;
+    if (uploadText) uploadText.textContent = `📁 Upload Image ${s}`;
+    if (guideText) {
+      guideText.innerHTML = `👉 Active: <strong>Image ${s}</strong> (Snap / Upload wheel marking)`;
+    }
+  } else {
+    if (capText) capText.textContent = 'Capture Snapshot';
+    if (phoneText) phoneText.textContent = '📱 Snap Mobile';
+    if (uploadText) uploadText.textContent = '📁 Upload Image';
+  }
+}
+
+function refreshRoiPoolSummaryUI() {
+  const poolEl = document.getElementById('shot-rois-pool-summary');
+  const countEl = document.getElementById('shot-pool-count');
+  const detailsEl = document.getElementById('shot-pool-details');
+  if (!poolEl) return;
+
+  const rois1 = (state.shot1.results || []).map((r, i) => ({ shot: 1, idx: i + 1, text: (r.text || '').trim() })).filter(r => r.text);
+  const rois2 = (state.shot2.results || []).map((r, i) => ({ shot: 2, idx: i + 1, text: (r.text || '').trim() })).filter(r => r.text);
+  const allRois = [...rois1, ...rois2];
+
+  if (allRois.length === 0) {
+    poolEl.style.display = 'none';
+    return;
+  }
+
+  poolEl.style.display = 'block';
+  if (countEl) countEl.textContent = `${allRois.length} ROIs detected`;
+  if (detailsEl) {
+    detailsEl.innerHTML = allRois.map(r => 
+      `<div style="display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; border-bottom: 1px dashed rgba(255,255,255,0.06);">
+        <span style="color: #38bdf8; font-weight: 600; white-space: nowrap;">Image ${r.shot} ROI ${r.idx}:</span>
+        <span class="mono" style="color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 200px;" title="${escapeHtml(r.text)}">${escapeHtml(r.text)}</span>
+      </div>`
+    ).join('');
+  }
+}
+
+function updateShotSummaryUI(shotNum, text, isDone = false, roiCount = 0) {
+  const sumEl = document.getElementById(`summary-shot-${shotNum}`);
+  const tab = document.getElementById(`tab-shot-${shotNum}`);
+  const tabName = document.getElementById(`tab-name-shot-${shotNum}`);
+
+  if (tabName) {
+    tabName.textContent = isDone ? `Image ${shotNum} (${roiCount} ROI${roiCount === 1 ? '' : 's'})` : `Image ${shotNum}`;
+  }
+  if (sumEl) sumEl.textContent = text;
+  if (tab) {
+    if (isDone) tab.classList.add('shot-done');
+    else tab.classList.remove('shot-done');
+  }
+  refreshRoiPoolSummaryUI();
+}
+
+function resetTwoShots() {
+  state.shot1 = { imageBase64: null, annotatedImageBase64: null, naturalWidth: 0, naturalHeight: 0, rois: [], results: null, text: '' };
+  state.shot2 = { imageBase64: null, annotatedImageBase64: null, naturalWidth: 0, naturalHeight: 0, rois: [], results: null, text: '' };
+  state.activeShot = 1;
+  state.rois = [];
+  state.originalImageBase64 = null;
+  state.activeImageBase64 = null;
+  state.annotatedImageBase64 = null;
+  state.lastValidationData = null;
+
+  updateShotSummaryUI(1, 'Awaiting capture / upload...', false, 0);
+  updateShotSummaryUI(2, 'Awaiting capture / upload...', false, 0);
+  document.getElementById('tab-shot-1')?.classList.add('active');
+  document.getElementById('tab-shot-2')?.classList.remove('active');
+  document.getElementById('btn-canvas-shot-1')?.classList.add('active');
+  document.getElementById('btn-canvas-shot-2')?.classList.remove('active');
+
+  const poolEl = document.getElementById('shot-rois-pool-summary');
+  if (poolEl) poolEl.style.display = 'none';
+
+  if (elements.judgmentBanner) elements.judgmentBanner.style.display = 'none';
+  if (elements.resultsContainer) elements.resultsContainer.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 30px 10px; font-size: 0.88rem;">Select ROI(s) on canvas or click "Auto-Detect All" to inspect OCR output.</div>';
+
+  elements.canvasPlaceholder.style.display = 'flex';
+  elements.canvas.style.display = 'none';
+
+  // Hide floating zoom toolbar and reset zoom
+  const zoomTb = document.getElementById('canvas-zoom-toolbar');
+  if (zoomTb) zoomTb.style.display = 'none';
+  resetCanvasZoom();
+
+  updateCaptureButtonLabels();
+  showToast('Ready for Image 1 capture / upload.');
+}
+
+function getCurrentSystemTokens() {
+  const now = new Date();
+  const curYear = String(now.getFullYear()).slice(-2);
+  const curMonth = String(now.getMonth() + 1).padStart(2, '0');
+  const hour = now.getHours();
+  // Factory shifts: A = 06:00 to 14:00, B = 14:00 to 22:00, C = 22:00 to 06:00
+  const autoShift = (hour >= 6 && hour < 14) ? 'A' : (hour >= 14 && hour < 22) ? 'B' : 'C';
+  return { curYear, curMonth, autoShift };
+}
+
+function initDynamicDateTokens() {
+  const { curYear, curMonth } = getCurrentSystemTokens();
+  const yInput = document.getElementById('dt-year');
+  const mInput = document.getElementById('dt-month');
+  const bInput = document.getElementById('dt-batch');
+  const sSelect = document.getElementById('dt-shift');
+  const yBadge = document.getElementById('dt-year-badge');
+  const mBadge = document.getElementById('dt-month-badge');
+
+  if (yInput && !yInput.dataset.manual) {
+    yInput.value = curYear;
+    if (yBadge) { yBadge.textContent = 'Auto'; yBadge.style.color = '#38bdf8'; }
+  }
+  if (mInput && !mInput.dataset.manual) {
+    mInput.value = curMonth;
+    if (mBadge) { mBadge.textContent = 'Auto'; mBadge.style.color = '#38bdf8'; }
+  }
+  if (bInput && !bInput.dataset.manual && (!bInput.value || bInput.value === 'B')) {
+    bInput.value = '*';
+  }
+  if (sSelect && !sSelect.dataset.manual && (!sSelect.value || sSelect.value === 'A')) {
+    sSelect.value = 'ANY';
+  }
+}
+
+function onDynamicTokensManualInput(input) {
+  if (input) {
+    input.dataset.manual = 'true';
+    const badge = document.getElementById(`${input.id}-badge`);
+    if (badge) {
+      badge.textContent = 'Manual';
+      badge.style.color = '#f59e0b';
+    }
+  }
+  onDynamicTokensChange();
+}
+
+function resetToCurrentDateTokens() {
+  const { curYear, curMonth } = getCurrentSystemTokens();
+  const yInput = document.getElementById('dt-year');
+  const mInput = document.getElementById('dt-month');
+  const bInput = document.getElementById('dt-batch');
+  const sSelect = document.getElementById('dt-shift');
+  const yBadge = document.getElementById('dt-year-badge');
+  const mBadge = document.getElementById('dt-month-badge');
+
+  if (yInput) {
+    yInput.value = curYear;
+    delete yInput.dataset.manual;
+    if (yBadge) { yBadge.textContent = 'Auto'; yBadge.style.color = '#38bdf8'; }
+  }
+  if (mInput) {
+    mInput.value = curMonth;
+    delete mInput.dataset.manual;
+    if (mBadge) { mBadge.textContent = 'Auto'; mBadge.style.color = '#38bdf8'; }
+  }
+  if (bInput) {
+    bInput.value = '*';
+    delete bInput.dataset.manual;
+  }
+  if (sSelect) {
+    sSelect.value = 'ANY';
+    delete sSelect.dataset.manual;
+  }
+  showToast(`Reset to current date: 20${curYear}-${curMonth} (* Any Batch & Shift)`, 'info');
+  onDynamicTokensChange();
+}
+
+function setDynamicTokensPreset(preset) {
+  const { curYear, curMonth, autoShift } = getCurrentSystemTokens();
+  const yInput = document.getElementById('dt-year');
+  const mInput = document.getElementById('dt-month');
+  const bInput = document.getElementById('dt-batch');
+  const sSelect = document.getElementById('dt-shift');
+
+  if (preset === 'current') {
+    if (yInput) { yInput.value = curYear; delete yInput.dataset.manual; }
+    if (mInput) { mInput.value = curMonth; delete mInput.dataset.manual; }
+    if (bInput) bInput.value = 'B';
+    if (sSelect) sSelect.value = 'A';
+    showToast(`Preset: Today (${curYear}/${curMonth}) + Batch B + Shift A`);
+  } else if (preset === 'auto_shift') {
+    if (yInput) { yInput.value = curYear; delete yInput.dataset.manual; }
+    if (mInput) { mInput.value = curMonth; delete mInput.dataset.manual; }
+    if (bInput) bInput.value = 'B';
+    if (sSelect) sSelect.value = 'AUTO';
+    showToast(`Preset: Auto Shift (${autoShift}) by Clock`);
+  } else if (preset === 'any_shift') {
+    if (yInput) { yInput.value = curYear; delete yInput.dataset.manual; }
+    if (mInput) { mInput.value = curMonth; delete mInput.dataset.manual; }
+    if (bInput) bInput.value = 'B';
+    if (sSelect) sSelect.value = 'ANY';
+    showToast('Preset: Accept Any Shift (A, B, or C)');
+  } else if (preset === 'any_both') {
+    if (yInput) { yInput.value = curYear; delete yInput.dataset.manual; }
+    if (mInput) { mInput.value = curMonth; delete mInput.dataset.manual; }
+    if (bInput) bInput.value = '*';
+    if (sSelect) sSelect.value = 'ANY';
+    showToast('Preset: Dynamic Any Batch & Shift (Default)');
+  }
+
+  const yBadge = document.getElementById('dt-year-badge');
+  const mBadge = document.getElementById('dt-month-badge');
+  if (yBadge) { yBadge.textContent = 'Auto'; yBadge.style.color = '#38bdf8'; }
+  if (mBadge) { mBadge.textContent = 'Auto'; mBadge.style.color = '#38bdf8'; }
+
+  onDynamicTokensChange();
+}
+
+function getDynamicParams() {
+  const { curYear, curMonth, autoShift } = getCurrentSystemTokens();
+  const year = document.getElementById('dt-year')?.value.trim() || curYear;
+  const month = document.getElementById('dt-month')?.value.trim() || curMonth;
+  const batch = document.getElementById('dt-batch')?.value.trim() || '*';
+  const shift = document.getElementById('dt-shift')?.value.trim() || 'ANY';
+
+  return {
+    year: year,
+    month: month,
+    batch: batch,
+    shift: shift,
+    auto_shift: autoShift,
+    suffix: 'WCWLB'
+  };
+}
+
+function updateDynamicTokensPreview() {
+  const p = getDynamicParams();
+  const { curYear, curMonth, autoShift } = getCurrentSystemTokens();
+
+  let shiftDisplay = p.shift;
+  if (p.shift === 'AUTO') {
+    shiftDisplay = `${autoShift} (Clock)`;
+  } else if (p.shift === 'ANY' || p.shift === '*') {
+    shiftDisplay = '[Any: A/B/C]';
+  }
+
+  let batchDisplay = p.batch;
+  if (p.batch === '*' || p.batch === 'ANY') {
+    batchDisplay = '[Any Batch]';
+  }
+
+  const suffixStr = `${p.year} ${p.month} ${batchDisplay} ${shiftDisplay} ${p.suffix}`;
+  const suffixEl = document.getElementById('dt-preview-suffix');
+  if (suffixEl) suffixEl.textContent = suffixStr;
+
+  const t = state.selectedTemplate;
+  const rawPattern = t ? (t.expected_front_pattern || t.front_marking?.full_text || '') : 'E13X4.00B DOT IS9436 logo.png CM/L-9512455524 YY MM AA WCWLB';
+
+  let effectiveShift = p.shift === 'AUTO' ? autoShift : (p.shift === 'ANY' || p.shift === '*' ? 'A/B/C' : p.shift);
+  let effectiveBatch = (p.batch === '*' || p.batch === 'ANY') ? 'A-E' : p.batch;
+
+  let resolved = rawPattern
+    .replace(/\bYYMM\b/gi, `${p.year}${p.month}`)
+    .replace(/\bYY\b/gi, p.year)
+    .replace(/\bMM\b/gi, p.month)
+    .replace(/\bAA\b/gi, `${effectiveBatch} ${effectiveShift}`)
+    .replace(/\bWCWL\s*B\b|\bWCWLB\b/gi, p.suffix);
+
+  const fullEl = document.getElementById('dt-preview-full');
+  if (fullEl) {
+    fullEl.textContent = resolved;
+    fullEl.title = resolved;
+  }
+}
+
+function toggleDynamicTokensPanel() {
+  const body = document.getElementById('dynamic-tokens-body');
+  const icon = document.getElementById('dynamic-toggle-icon');
+  if (!body) return;
+  const isHidden = body.style.display === 'none';
+  body.style.display = isHidden ? 'block' : 'none';
+  if (icon) icon.textContent = isHidden ? '▲' : '▼';
+}
+
+function onDynamicTokensChange() {
+  updateDynamicTokensPreview();
+  if (state.selectedTemplateId) {
+    if (state.inspectionMode === 'two_shot') {
+      if (state.shot1.text || state.shot2.text) {
+        validateTwoShots();
+      }
+    } else if (state.lastOcrResults) {
+      validateOcrAgainstTemplate(state.lastOcrResults);
+    }
+  }
+}
+
+function appendTokenToInput(inputId, token) {
+  const el = document.getElementById(inputId);
+  if (!el) return;
+  const cur = el.value.trim();
+  el.value = cur ? `${cur} ${token}` : token;
+  el.focus();
+}
+
+async function validateTwoShots() {
+  if (!state.selectedTemplateId) return;
+
+  const s1Rois = (state.shot1.results || []).map(r => (r.text || '').trim()).filter(Boolean);
+  const s2Rois = (state.shot2.results || []).map(r => (r.text || '').trim()).filter(Boolean);
+  const s1Text = (state.shot1.text || '').trim();
+  const s2Text = (state.shot2.text || '').trim();
+
+  if (s1Rois.length === 0 && s2Rois.length === 0 && !s1Text && !s2Text) {
+    if (elements.judgmentBanner) elements.judgmentBanner.style.display = 'none';
+    return;
+  }
+
+  // Collect all individual atomic ROIs from all images
+  const ocrTexts = [];
+  s1Rois.forEach(t => { if (!ocrTexts.includes(t)) ocrTexts.push(t); });
+  s2Rois.forEach(t => { if (!ocrTexts.includes(t)) ocrTexts.push(t); });
+  if (s1Text && !ocrTexts.includes(s1Text)) ocrTexts.push(s1Text);
+  if (s2Text && !ocrTexts.includes(s2Text)) ocrTexts.push(s2Text);
+  if (s1Text && s2Text) {
+    const combinedShot = `${s1Text} ${s2Text}`;
+    if (!ocrTexts.includes(combinedShot)) ocrTexts.push(combinedShot);
+  }
+
+  const checkSide = state.inspectSide || 'auto';
+  let frontData = null;
+  let rearData = null;
+
+  try {
+    if (checkSide === 'auto' || checkSide === 'front') {
+      const frontRes = await fetch('/api/validate_ocr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          template_id: state.selectedTemplateId,
+          side: 'front',
+          ocr_texts: ocrTexts,
+          dynamic_params: getDynamicParams()
+        })
+      });
+      frontData = await parseJsonResponse(frontRes);
+    }
+
+    const rearText = state.selectedTemplate?.rear_marking?.full_text;
+    if ((checkSide === 'auto' || checkSide === 'rear') && rearText && rearText.toUpperCase() !== 'N/A') {
+      const rearRes = await fetch('/api/validate_ocr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          template_id: state.selectedTemplateId,
+          side: 'rear',
+          ocr_texts: ocrTexts,
+          dynamic_params: getDynamicParams()
+        })
+      });
+      rearData = await parseJsonResponse(rearRes);
+    }
+
+    renderJudgmentBanner(frontData, rearData);
+  } catch (e) {
+    console.error('Multi-shot validation error:', e);
   }
 }
 
@@ -1013,9 +1838,30 @@ async function requestProcessOCR() {
     // Render OCR Results in Step 3 Output Panel
     renderResults(data.results, data.inference_time_ms);
 
-    // If a template is selected, validate against it
-    if (state.selectedTemplateId && data.results.length > 0) {
-      await validateOcrAgainstTemplate(data.results);
+    if (state.inspectionMode === 'two_shot') {
+      const current = state['shot' + state.activeShot];
+      current.annotatedImageBase64 = data.annotated_image;
+      current.results = data.results || [];
+      current.text = (data.results || []).map(r => r.text).join(' ').trim();
+      current.rois = [...state.rois];
+
+      const previewSnippet = (data.results || []).map(r => r.text).join(' | ').trim() || '(empty)';
+      updateShotSummaryUI(state.activeShot, previewSnippet, true, (data.results || []).length);
+
+      // If Shot 1 completed and Shot 2 has not been captured yet, auto prompt/advance
+      if (state.activeShot === 1 && !state.shot2.imageBase64) {
+        showToast(`✓ Image 1 Captured (${(data.results || []).length} ROIs). Switched to Image 2!`, 'info');
+        setTimeout(() => {
+          switchActiveShot(2);
+        }, 1100);
+      }
+
+      await validateTwoShots();
+    } else {
+      // Single shot validation
+      if (state.selectedTemplateId && data.results.length > 0) {
+        await validateOcrAgainstTemplate(data.results);
+      }
     }
 
     showToast(`OCR Completed in ${data.inference_time_ms} ms!`);
@@ -1055,7 +1901,10 @@ function setInspectionSide(side) {
 async function validateOcrAgainstTemplate(results) {
   if (!state.selectedTemplateId) return;
 
-  const ocrTexts = results.map(r => r.text);
+  const ocrTexts = results.map(r => (r.text || '').trim()).filter(Boolean);
+  if (ocrTexts.length > 1) {
+    ocrTexts.push(ocrTexts.join(' '));
+  }
   const checkSide = state.inspectSide || 'auto';
 
   let frontData = null;
@@ -1070,7 +1919,8 @@ async function validateOcrAgainstTemplate(results) {
         body: JSON.stringify({
           template_id: state.selectedTemplateId,
           side: 'front',
-          ocr_texts: ocrTexts
+          ocr_texts: ocrTexts,
+          dynamic_params: getDynamicParams()
         })
       });
       frontData = await parseJsonResponse(frontRes);
@@ -1091,7 +1941,8 @@ async function validateOcrAgainstTemplate(results) {
         body: JSON.stringify({
           template_id: state.selectedTemplateId,
           side: 'rear',
-          ocr_texts: ocrTexts
+          ocr_texts: ocrTexts,
+          dynamic_params: getDynamicParams()
         })
       });
       rearData = await parseJsonResponse(rearRes);
@@ -1175,7 +2026,7 @@ function renderJudgmentBanner(frontData, rearData) {
         </div>
         <div class="comparison-row">
           <span class="comparison-label">Detected OCR:</span>
-          <span class="comparison-value mono ${isOK ? 'text-ok' : 'text-ng'}">${renderDetectedWithLogo(frontData.detected_text)}</span>
+          <span class="comparison-value mono ${isOK ? 'text-ok' : 'text-ng'}" style="font-weight: 700;">${renderDetectedWithLogo(frontData.detected_text)}</span>
         </div>
       </div>
     `;
@@ -1212,7 +2063,7 @@ function renderJudgmentBanner(frontData, rearData) {
         </div>
         <div class="comparison-row">
           <span class="comparison-label">Detected OCR:</span>
-          <span class="comparison-value mono ${rearOK ? 'text-ok' : 'text-ng'}">${renderDetectedWithLogo(rearData.detected_text)}</span>
+          <span class="comparison-value mono ${rearOK ? 'text-ok' : 'text-ng'}" style="font-weight: 700;">${renderDetectedWithLogo(rearData.detected_text)}</span>
         </div>
       </div>
     `;
@@ -1233,8 +2084,20 @@ function renderResults(results, latencyMs) {
   const sendBtn = document.getElementById('btn-send-approval');
   if (sendBtn) sendBtn.style.display = 'inline-flex';
 
+  // Helper to render detected OCR with logo image cleanly
+  function renderDetectedWithLogo(text) {
+    const raw = (text || '(none)').trim();
+    let display = escapeHtml(raw);
+    return display.replace(/logo\.png/gi, '<img src="/logo.png" style="height: 16px; vertical-align: middle; margin: 0 3px;" alt="Logo"/>');
+  }
+
   if (!results || results.length === 0) {
-    elements.resultsContainer.innerHTML = '<div style="color: var(--text-muted); text-align: center; padding: 25px;">No characters or symbols detected in the selected area.</div>';
+    const emptyMsg = document.createElement('div');
+    emptyMsg.style.cssText = 'color: var(--text-muted); text-align: center; padding: 25px; font-size: 0.85rem;';
+    emptyMsg.textContent = state.inspectionMode === 'two_shot'
+      ? `No characters detected in Image ${state.activeShot}. Draw ROI or click Auto-Detect.`
+      : 'No characters or symbols detected in the selected area.';
+    elements.resultsContainer.appendChild(emptyMsg);
     return;
   }
 
@@ -1250,7 +2113,7 @@ function renderResults(results, latencyMs) {
 
     card.innerHTML = `
       <div class="result-header">
-        <span class="result-tag">ROI ${item.roi_idx}</span>
+        <span class="result-tag">${state.inspectionMode === 'two_shot' ? `Image ${state.activeShot} — ` : ''}ROI ${item.roi_idx}</span>
         <span style="font-size: 0.76rem; font-weight: 600; color: var(--text-secondary);">${item.char_count} characters</span>
       </div>
 
@@ -1857,23 +2720,37 @@ function renderApprovalsList(records) {
           </h3>
           ${statusTagHtml}
         </div>
-        <div class="card-meta-group">
+        <div class="card-meta-group" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
           <span class="card-meta-item">Wheel: <strong>${escapeHtml(r.wheel_code || 'N/A')}</strong> (${escapeHtml(r.side || 'Front')})</span>
           <span class="card-meta-item">Operator: <strong>${escapeHtml(r.captured_by || 'operator1')}</strong></span>
           <span class="card-meta-item">Date: <strong>${escapeHtml(r.captured_date || 'N/A')}</strong></span>
+          ${r.captured_image && r.captured_image.trim() ? `
+            <button class="btn btn-xs btn-outline" onclick="event.stopPropagation(); openApprovalDirectToStudio(${r.id})" title="Load into Studio to zoom with finger/mouse and select ROIs" style="padding: 2px 8px; font-size: 0.72rem; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4); margin-left: auto;">
+              ✏️ Select ROI in Studio
+            </button>
+          ` : ''}
         </div>
       </div>
 
       <!-- Captured Image Panel Only -->
       <div class="captured-image-container">
         <div class="image-panel">
-          <div class="image-panel-header">
-            <span>Captured Image</span>
-            <span style="font-size: 0.72rem; color: var(--accent-amber); font-weight: 700;">LIVE OCR CAPTURE</span>
+          <div class="image-panel-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span>Captured Image</span>
+              <span style="font-size: 0.72rem; color: var(--accent-amber); font-weight: 700;">LIVE OCR CAPTURE</span>
+            </div>
+            ${r.captured_image && r.captured_image.trim() ? `
+              <div style="display: flex; gap: 6px;">
+                <button type="button" class="btn btn-xs btn-outline" onclick="event.stopPropagation(); openApprovalImageZoom(${r.id})" title="Interactive Zoom & Inspect" style="padding: 2px 7px; font-size: 0.7rem; color: #38bdf8;">🔍 Zoom</button>
+                <button type="button" class="btn btn-xs btn-outline" onclick="event.stopPropagation(); openApprovalDirectToStudio(${r.id})" title="Open in Studio to draw/select ROI" style="padding: 2px 7px; font-size: 0.7rem;">✏️ Studio</button>
+              </div>
+            ` : ''}
           </div>
-          <div class="image-panel-body">
+          <div class="image-panel-body" style="position: relative; cursor: pointer;" onclick="openApprovalImageZoom(${r.id})" title="Click to Zoom / Select ROI">
             ${r.captured_image && r.captured_image.trim() ? `
               <img src="${r.captured_image}" alt="Captured Image" style="max-height: 220px; width: 100%; object-fit: contain; border-radius: 4px;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+              <div class="zoom-hover-hint">🔍 Zoom &amp; Select ROI</div>
               <div class="no-img-placeholder" style="display:none; height:180px; align-items:center; justify-content:center; color:var(--text-muted); font-size:0.85rem; flex-direction:column; gap:8px;">
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
                 <span>Captured frame image unavailable</span>
@@ -2005,19 +2882,78 @@ async function confirmRejectRecord() {
   }
 }
 
+async function getApprovalCompositeImage() {
+  if (state.inspectionMode === 'two_shot' && state.shot1.imageBase64 && state.shot2.imageBase64) {
+    return new Promise(resolve => {
+      const img1 = new Image();
+      const img2 = new Image();
+      let loaded = 0;
+      const onLoad = () => {
+        loaded++;
+        if (loaded === 2) {
+          const c = document.createElement('canvas');
+          const maxW = Math.max(img1.naturalWidth || img1.width, img2.naturalWidth || img2.width);
+          const h1 = img1.naturalHeight || img1.height;
+          const h2 = img2.naturalHeight || img2.height;
+          c.width = maxW;
+          c.height = h1 + h2 + 40;
+          const ctx2 = c.getContext('2d');
+
+          ctx2.fillStyle = '#0f172a';
+          ctx2.fillRect(0, 0, c.width, c.height);
+
+          // Draw shot 1
+          ctx2.drawImage(img1, 0, 0);
+          ctx2.fillStyle = 'rgba(0,0,0,0.65)';
+          ctx2.fillRect(10, 10, 210, 26);
+          ctx2.fillStyle = '#38bdf8';
+          ctx2.font = 'bold 13px sans-serif';
+          ctx2.fillText('SHOT 1: FIXED MARKING', 18, 28);
+
+          // Draw shot 2
+          const y2 = h1 + 20;
+          ctx2.drawImage(img2, 0, y2);
+          ctx2.fillStyle = 'rgba(0,0,0,0.65)';
+          ctx2.fillRect(10, y2 + 10, 190, 26);
+          ctx2.fillStyle = '#10b981';
+          ctx2.font = 'bold 13px sans-serif';
+          ctx2.fillText('SHOT 2: DATE & SHIFT', 18, y2 + 28);
+
+          resolve(c.toDataURL('image/jpeg', 0.85));
+        }
+      };
+      img1.onload = onLoad;
+      img2.onload = onLoad;
+      img1.src = state.shot1.annotatedImageBase64 || state.shot1.imageBase64;
+      img2.src = state.shot2.annotatedImageBase64 || state.shot2.imageBase64;
+    });
+  }
+  return state.annotatedImageBase64 || state.activeImageBase64 || '';
+}
+
 // Send Current Step 3 Verification to Admin Approval Screen
 async function sendCurrentForApproval() {
-  if (!state.activeImageBase64) {
-    showToast('No captured image to send', 'error');
-    return;
-  }
-
   const tmpl = state.selectedTemplate;
   const lastRes = state.lastOcrResults;
   const val = state.lastValidationData;
 
-  const masterOcr = val?.frontData?.expected_text || tmpl?.front_marking?.full_text || 'ABC123456';
-  const detectedOcr = (lastRes && lastRes.length > 0) ? lastRes.map(r => r.text).join(' ') : 'ABC123456';
+  const capturedImg = await getApprovalCompositeImage();
+  if (!capturedImg) {
+    showToast('No captured image to send', 'error');
+    return;
+  }
+
+  const masterOcr = val?.frontData?.expected_text || val?.frontData?.expected_pattern || tmpl?.expected_front_pattern || tmpl?.front_marking?.full_text || 'ABC123456';
+  
+  let detectedOcr = '';
+  if (state.inspectionMode === 'two_shot' && (state.shot1.text || state.shot2.text)) {
+    detectedOcr = [state.shot1.text, state.shot2.text].filter(Boolean).join(' ');
+  } else if (lastRes && lastRes.length > 0) {
+    detectedOcr = lastRes.map(r => r.text).join(' ');
+  } else {
+    detectedOcr = 'ABC123456';
+  }
+
   const similarity = val?.frontData?.match_percentage !== undefined ? val.frontData.match_percentage : 100.0;
   const conf = parseFloat(elements.confSlider?.value || '0.10') * 100 + 88.7;
   const boundedConf = Math.min(99.4, Math.max(92.0, conf));
@@ -2027,9 +2963,9 @@ async function sendCurrentForApproval() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        wheel_code: tmpl?.wheel_code || 'LP2137',
+        wheel_code: tmpl?.wheel_code || 'LP2113',
         side: state.inspectSide === 'rear' ? 'Rear' : 'Front',
-        captured_image: state.annotatedImageBase64 || state.activeImageBase64 || '',
+        captured_image: capturedImg,
         master_ocr: masterOcr,
         detected_ocr: detectedOcr,
         ocr_confidence: boundedConf,
@@ -2052,4 +2988,246 @@ function timeToDateStr() {
   const d = new Date();
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${d.getDate()}-${months[d.getMonth()]}-${d.getFullYear()}`;
+}
+
+// -----------------------------------------------------------------------------
+// Interactive Approval Screen Image Zoom Modal & Studio ROI Bridge
+// -----------------------------------------------------------------------------
+const modalZoomState = {
+  scale: 1.0,
+  panX: 0,
+  panY: 0,
+  isPanning: false,
+  panStartX: 0,
+  panStartY: 0,
+  initialPanX: 0,
+  initialPanY: 0,
+  isPinching: false,
+  initialDistance: 0,
+  initialScale: 1.0,
+  currentRecord: null,
+  currentImageSrc: null
+};
+
+function setupModalZoomListeners() {
+  const viewport = document.getElementById('modal-zoom-viewport');
+  if (!viewport) return;
+
+  // Mouse wheel zoom inside modal
+  viewport.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 0.25 : -0.25;
+    zoomModalImage(delta);
+  }, { passive: false });
+
+  // Mouse drag pan inside modal
+  viewport.addEventListener('mousedown', (e) => {
+    modalZoomState.isPanning = true;
+    modalZoomState.panStartX = e.clientX;
+    modalZoomState.panStartY = e.clientY;
+    modalZoomState.initialPanX = modalZoomState.panX;
+    modalZoomState.initialPanY = modalZoomState.panY;
+    viewport.style.cursor = 'grabbing';
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!modalZoomState.isPanning) return;
+    const dx = e.clientX - modalZoomState.panStartX;
+    const dy = e.clientY - modalZoomState.panStartY;
+    modalZoomState.panX = Math.round(modalZoomState.initialPanX + dx);
+    modalZoomState.panY = Math.round(modalZoomState.initialPanY + dy);
+    applyModalImageTransform();
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (modalZoomState.isPanning) {
+      modalZoomState.isPanning = false;
+      if (viewport) viewport.style.cursor = 'grab';
+    }
+  });
+
+  // Touch support inside modal (2-finger pinch & pan, 1-finger pan)
+  viewport.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 2) {
+      if (e.cancelable) e.preventDefault();
+      modalZoomState.isPinching = true;
+      modalZoomState.isPanning = false;
+      const t1 = e.touches[0], t2 = e.touches[1];
+      modalZoomState.initialDistance = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      modalZoomState.initialScale = modalZoomState.scale;
+      modalZoomState.panStartX = (t1.clientX + t2.clientX) / 2;
+      modalZoomState.panStartY = (t1.clientY + t2.clientY) / 2;
+      modalZoomState.initialPanX = modalZoomState.panX;
+      modalZoomState.initialPanY = modalZoomState.panY;
+      return;
+    }
+    if (e.touches.length === 1) {
+      if (e.cancelable) e.preventDefault();
+      modalZoomState.isPanning = true;
+      modalZoomState.panStartX = e.touches[0].clientX;
+      modalZoomState.panStartY = e.touches[0].clientY;
+      modalZoomState.initialPanX = modalZoomState.panX;
+      modalZoomState.initialPanY = modalZoomState.panY;
+    }
+  }, { passive: false });
+
+  viewport.addEventListener('touchmove', (e) => {
+    if (modalZoomState.isPinching && e.touches.length >= 2) {
+      if (e.cancelable) e.preventDefault();
+      const t1 = e.touches[0], t2 = e.touches[1];
+      const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      const factor = dist / (modalZoomState.initialDistance || 1);
+      const newScale = Math.max(0.5, Math.min(5.0, modalZoomState.initialScale * factor));
+      modalZoomState.scale = Math.round(newScale * 100) / 100;
+
+      const midX = (t1.clientX + t2.clientX) / 2;
+      const midY = (t1.clientY + t2.clientY) / 2;
+      modalZoomState.panX = Math.round(modalZoomState.initialPanX + (midX - modalZoomState.panStartX));
+      modalZoomState.panY = Math.round(modalZoomState.initialPanY + (midY - modalZoomState.panStartY));
+      applyModalImageTransform();
+      return;
+    }
+    if (modalZoomState.isPanning && e.touches.length === 1) {
+      if (e.cancelable) e.preventDefault();
+      const dx = e.touches[0].clientX - modalZoomState.panStartX;
+      const dy = e.touches[0].clientY - modalZoomState.panStartY;
+      modalZoomState.panX = Math.round(modalZoomState.initialPanX + dx);
+      modalZoomState.panY = Math.round(modalZoomState.initialPanY + dy);
+      applyModalImageTransform();
+    }
+  }, { passive: false });
+
+  viewport.addEventListener('touchend', (e) => {
+    if (modalZoomState.isPinching && (!e.touches || e.touches.length < 2)) {
+      modalZoomState.isPinching = false;
+    }
+    if (modalZoomState.isPanning && (!e.touches || e.touches.length === 0)) {
+      modalZoomState.isPanning = false;
+    }
+  });
+}
+
+function openApprovalImageZoom(recordId) {
+  const rec = (state.approvals || []).find(a => String(a.id) === String(recordId));
+  if (!rec || !rec.captured_image) {
+    showToast('No captured image available for this record', 'error');
+    return;
+  }
+  openImageZoomModal(
+    rec.captured_image,
+    `Verification #${rec.verification_num || rec.id} — ${rec.wheel_code || 'Wheel'} (${rec.side || 'Front'})`,
+    rec.master_ocr,
+    rec.detected_ocr,
+    rec
+  );
+}
+
+function openApprovalDirectToStudio(recordId) {
+  const rec = (state.approvals || []).find(a => String(a.id) === String(recordId));
+  if (!rec || !rec.captured_image) {
+    showToast('No captured image available for this record', 'error');
+    return;
+  }
+  switchScreen('ocr-studio');
+  setOriginalImage(rec.captured_image);
+  if (rec.wheel_code && elements.wheelModelSelect) {
+    for (const opt of elements.wheelModelSelect.options) {
+      if (opt.value && opt.textContent.includes(rec.wheel_code)) {
+        elements.wheelModelSelect.value = opt.value;
+        onWheelModelChange();
+        break;
+      }
+    }
+  }
+  showToast(`Loaded Verification #${rec.verification_num || rec.id} into Studio! Zoom with mouse/finger & select ROIs.`, 'success');
+}
+
+function openImageZoomModal(imgSrc, title = 'Inspection Image Zoom', masterOcr = '', detectedOcr = '', recordObj = null) {
+  modalZoomState.currentImageSrc = imgSrc;
+  modalZoomState.currentRecord = recordObj;
+  modalZoomState.scale = 1.0;
+  modalZoomState.panX = 0;
+  modalZoomState.panY = 0;
+
+  const modal = document.getElementById('image-zoom-modal');
+  const img = document.getElementById('modal-zoom-img');
+  const titleEl = document.getElementById('zoom-modal-title');
+  const ocrInfoEl = document.getElementById('modal-zoom-ocr-info');
+  const badgeEl = document.getElementById('modal-zoom-badge');
+
+  if (titleEl) titleEl.textContent = title;
+  if (img) {
+    img.src = imgSrc;
+    applyModalImageTransform();
+  }
+  if (badgeEl) badgeEl.textContent = '100%';
+
+  if (ocrInfoEl) {
+    if (masterOcr || detectedOcr) {
+      ocrInfoEl.style.display = 'block';
+      ocrInfoEl.innerHTML = `
+        <div style="font-weight: 600; color: #94a3b8; font-size: 0.7rem; margin-bottom: 2px;">MASTER EXPECTED:</div>
+        <div class="mono" style="color: #38bdf8; word-break: break-all; margin-bottom: 4px;">${escapeHtml(masterOcr || 'N/A')}</div>
+        <div style="font-weight: 600; color: #94a3b8; font-size: 0.7rem; margin-bottom: 2px;">DETECTED OCR:</div>
+        <div class="mono" style="color: #a7f3d0; word-break: break-all;">${escapeHtml(detectedOcr || 'N/A')}</div>
+      `;
+    } else {
+      ocrInfoEl.style.display = 'none';
+    }
+  }
+
+  if (modal) {
+    modal.style.display = 'flex';
+  }
+}
+
+function closeImageZoomModal(e) {
+  if (e && e.target && e.target.closest && e.target.closest('.modal-card') && !e.target.classList.contains('modal-close')) {
+    return;
+  }
+  const modal = document.getElementById('image-zoom-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+function applyModalImageTransform() {
+  const img = document.getElementById('modal-zoom-img');
+  const badge = document.getElementById('modal-zoom-badge');
+  if (!img) return;
+  img.style.transform = `translate(${modalZoomState.panX}px, ${modalZoomState.panY}px) scale(${modalZoomState.scale})`;
+  if (badge) badge.textContent = `${Math.round(modalZoomState.scale * 100)}%`;
+}
+
+function zoomModalImage(delta) {
+  const newScale = Math.max(0.5, Math.min(5.0, modalZoomState.scale + delta));
+  modalZoomState.scale = Math.round(newScale * 100) / 100;
+  applyModalImageTransform();
+}
+
+function resetModalZoom() {
+  modalZoomState.scale = 1.0;
+  modalZoomState.panX = 0;
+  modalZoomState.panY = 0;
+  applyModalImageTransform();
+}
+
+function openModalImageInStudio() {
+  if (!modalZoomState.currentImageSrc) {
+    showToast('No image loaded to open in studio', 'error');
+    return;
+  }
+  const imgSrc = modalZoomState.currentImageSrc;
+  const rec = modalZoomState.currentRecord;
+  closeImageZoomModal();
+  switchScreen('ocr-studio');
+  setOriginalImage(imgSrc);
+  if (rec && rec.wheel_code && elements.wheelModelSelect) {
+    for (const opt of elements.wheelModelSelect.options) {
+      if (opt.value && opt.textContent.includes(rec.wheel_code)) {
+        elements.wheelModelSelect.value = opt.value;
+        onWheelModelChange();
+        break;
+      }
+    }
+  }
+  showToast('Image loaded into Interactive Studio! Zoom with mouse or finger to select ROIs.', 'success');
 }
