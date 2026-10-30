@@ -1,6 +1,6 @@
 description: Ultralytics YOLO26s-seg model trained on data.yaml
 author: Ultralytics
-date: '2026-10-16T16:47:29.634342'
+date: '2026-10-30T16:25:31.099030'
 version: 8.4.56
 license: AGPL-3.0 License (https://ultralytics.com/license)
 docs: https://docs.ultralytics.com
@@ -27,17 +27,22 @@ names:
   13: C
   14: D
   15: E
-  16: I
-  17: IST
-  18: L
-  19: M
-  20: P
-  21: S
-  22: T
-  23: W
-  24: X
-  25: box
-  26: slash
+  16: H
+  17: I
+  18: IST
+  19: J
+  20: L
+  21: M
+  22: N
+  23: P
+  24: Q
+  25: S
+  26: T
+  27: W
+  28: X
+  29: Y
+  30: box
+  31: slash
 args:
   data: null
   batch: 1
